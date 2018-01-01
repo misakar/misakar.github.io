@@ -1,0 +1,277 @@
+<html>
+    <head>
+        <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+        <link href=/static/css/main.css rel="stylesheet" type="text/css">
+        <link rel="stylesheet" href="/pygments.css">
+        <!--link href=/static/css/colorful.css rel="stylesheet" type="text/css"-->
+        <title>如何编写一个Unix Daemon</title>
+    </head>
+    <body>
+        <h1>如何编写一个Unix Daemon</h1>
+<p>Unix Daemon就是Unix守护进程, 是指常驻在后台运行, 不与用户交互(用户无法从终端停止)的程序. Unix守护进程常被用来运行定时任务、监听用户连接等需要长时间不间断执行的程序, 比如ShadowSocks的Server就可以作为daemon运行在服务器上.<br/>
+接下来我将介绍如何编写Unix Daemon并以ShadowSocks daemon代码为实例创建、运行、销毁一个daemon.</p>
+<p><img alt="图片待定" src="" /></p>
+<h2>Fork</h2>
+<h3>使用Fork创建子进程</h3>
+<p>Unix世界最深刻的哲学思想就是: <strong>"Do One Thing and Do It Well"</strong>. Unix 系统的fork()和exec()体现了这个精神，它们提供了一种非常简单的方法来启动新的进程, 在这两个系统调用的基础上, 我们可以启动更复杂的进程. Unix Daemon就是基于fork系统调用实现的.<br/>
+fork()系统调用的作用非常简单, 就是从调用fork()的进程处拷贝出一个子进程, 这里的拷贝包含了整个进程地址空间(有些linux版本优化的fork会实现copy-on-write, 只有在exec时才拷贝进程空间). 简单来说一个进程调用fork, 两个进程从它返回.<br/>
+例如下面的程序:</p>
+<div class="codehilite"><pre><span></span><span class="cp">#include</span> <span class="cpf">&lt;stdio.h&gt;</span><span class="cp"></span>
+<span class="cp">#include</span> <span class="cpf">&lt;string.h&gt;</span><span class="cp"></span>
+<span class="cp">#include</span> <span class="cpf">&lt;unistd.h&gt;</span><span class="cp"></span>
+
+<span class="cp">#define  MAX_COUNT 200</span>
+<span class="cp">#define  BUF_SIZE  100</span>
+
+<span class="kt">void</span> <span class="nf">main</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="kt">pid_t</span> <span class="n">pid</span><span class="p">;</span>
+    <span class="kt">int</span>   <span class="n">i</span><span class="p">;</span>
+    <span class="kt">char</span>  <span class="n">buf</span><span class="p">[</span><span class="n">BUF_SIZE</span><span class="p">];</span>
+
+    <span class="n">fork</span><span class="p">();</span>
+    <span class="n">pid</span> <span class="o">=</span> <span class="n">getpid</span><span class="p">();</span>
+    <span class="k">for</span> <span class="p">(</span><span class="n">i</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;=</span> <span class="n">MAX_COUNT</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">sprintf</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="s">&quot;This line is from pid %d, value = %d</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">pid</span><span class="p">,</span> <span class="n">i</span><span class="p">);</span>
+        <span class="n">write</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">buf</span><span class="p">,</span> <span class="n">strlen</span><span class="p">(</span><span class="n">buf</span><span class="p">));</span>
+    <span class="p">}</span> 
+<span class="p">}</span>
+</pre></div>
+
+
+<p>该程序调用fork()后, 会"分裂"出子进程, 调用fork的进程成为父进程, 两个进程继续各自执行fork()后的代码. <br/></p>
+<h3>区分父子进程</h3>
+<p>如何让fork出来的子进程运行与父进程不同的代码呢？我们可以通过fork的返回值--进程id实现. 对于父进程, fork返回子进程的id; 对于子进程fork返回0; 如果fork的过程出错, 则返回-1. 如此，就可以很方便的区别父子进程、进行错误处理了:</p>
+<div class="codehilite"><pre><span></span><span class="cp">#include</span> <span class="cpf">&lt;stdio.h&gt;</span><span class="cp"></span>
+<span class="cp">#include</span> <span class="cpf">&lt;string.h&gt;</span><span class="cp"></span>
+<span class="cp">#include</span> <span class="cpf">&lt;unistd.h&gt;</span><span class="cp"></span>
+
+<span class="cp">#define  MAX_COUNT 200</span>
+
+<span class="kt">void</span> <span class="nf">child</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+<span class="kt">void</span> <span class="nf">parent</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+
+<span class="kt">void</span> <span class="nf">main</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="kt">pid_t</span> <span class="n">pid</span> <span class="o">=</span> <span class="n">fork</span><span class="p">();</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">pid</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">fprintf</span><span class="p">(</span><span class="n">stderr</span><span class="p">,</span> <span class="s">&quot;fork error!</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">pid</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">child</span><span class="p">();</span>
+    <span class="p">}</span>
+    <span class="k">else</span> <span class="p">{</span>
+        <span class="n">parent</span><span class="p">();</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">child</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;=</span> <span class="n">MAX_COUNT</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;This line is from child</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+    <span class="p">}</span> 
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">parent</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;=</span> <span class="n">MAX_COUNT</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;This line is from parent %d</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">getpid</span><span class="p">());</span>
+    <span class="p">}</span> 
+<span class="p">}</span>
+</pre></div>
+
+
+<p>在各个进程中程序可以调用getpid获取进程id; 在父进程中通过fork的返回值拿到子进程的pid; 而子进程可以调用getppid获取所属父进程的进程id. <br/></p>
+<h3>shell: fork使用实例</h3>
+<p>我们日常使用的shell底层就是对fork的调用, 例如<code>在shell中输入ls拿到文件列表</code>的过程如下</p>
+<div class="codehilite"><pre><span></span>+--------+
+| pid=7  |
+| ppid=4 |
+| bash   |
++--------+
+    |
+    | calls fork
+    V
++--------+             +--------+
+| pid=7  |    forks    | pid=22 |
+| ppid=4 | ----------&gt; | ppid=7 |
+| bash   |             | bash   |
++--------+             +--------+
+    |                      |
+    | waits for pid 22     | calls exec to run ls
+    |                      V
+    |                  +--------+
+    |                  | pid=22 |
+    |                  | ppid=7 |
+    |                  | ls     |
+    V                  +--------+
++--------+                 |
+| pid=7  |                 | exits
+| ppid=4 | &lt;---------------+
+| bash   |
++--------+
+    |
+    | continues
+    V
+</pre></div>
+
+
+<h2>实现Daemon</h2>
+<h3>孤儿进程与僵尸进程</h3>
+<p>父进程可以通过fork函数的返回值拿到子进程的进程id, 并在随后调用wait/waitpid函数获取子进程的结束状态并释放子进程的进程描述符. 例如:</p>
+<div class="codehilite"><pre><span></span><span class="cp">#include</span> <span class="cpf">&lt;stdio.h&gt;</span><span class="cp"></span>
+<span class="cp">#include</span> <span class="cpf">&lt;string.h&gt;</span><span class="cp"></span>
+<span class="cp">#include</span> <span class="cpf">&lt;unistd.h&gt;</span><span class="cp"></span>
+<span class="cp">#include</span> <span class="cpf">&lt;sys/types.h&gt;</span><span class="cp"></span>
+<span class="cp">#include</span> <span class="cpf">&lt;sys/wait.h&gt;</span><span class="cp"></span>
+<span class="cp">#include</span> <span class="cpf">&lt;signal.h&gt;</span><span class="cp"></span>
+
+<span class="cp">#define  MAX_COUNT 200</span>
+
+<span class="kt">void</span> <span class="nf">child</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+<span class="kt">void</span> <span class="nf">parent</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+
+<span class="kt">void</span> <span class="nf">main</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="kt">int</span> <span class="n">stat</span><span class="p">;</span>
+    <span class="kt">pid_t</span> <span class="n">pid</span> <span class="o">=</span> <span class="n">fork</span><span class="p">();</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">pid</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">fprintf</span><span class="p">(</span><span class="n">stderr</span><span class="p">,</span> <span class="s">&quot;fork error!</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">pid</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">child</span><span class="p">();</span>
+    <span class="p">}</span>
+    <span class="k">else</span> <span class="p">{</span>
+        <span class="n">parent</span><span class="p">();</span>
+    <span class="p">}</span>
+    <span class="k">while</span> <span class="p">((</span><span class="n">pid</span> <span class="o">=</span> <span class="n">waitpid</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">stat</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;child %d terminated.</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">pid</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">child</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;=</span> <span class="n">MAX_COUNT</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;This line is from child: &quot;</span><span class="p">);</span>
+        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;child: %d</span><span class="se">\t</span><span class="s">parent: %d</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">getpid</span><span class="p">(),</span> <span class="n">getppid</span><span class="p">());</span>
+
+    <span class="p">}</span> 
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">parent</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;=</span> <span class="n">MAX_COUNT</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;This line is from parent %d</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">getpid</span><span class="p">());</span>
+    <span class="p">}</span> 
+<span class="p">}</span>
+</pre></div>
+
+
+<p>我们将运行结果和上一段中没有调用waitpid的程序相比较, 发现上一段程序中子进程所属的父进程id在运行时发生了改变. 造成这种现象的原因是因为父进程没有调用waitpid, 所以不会等待子进程结束而是直接退出, 可是这时子进程依然还在运行, 这个子进程就变成了一个孤儿进程, 系统init程序会自动收养孤儿-- 作为该孤儿进程的父进程执行waitpid, 等待该进程退出并释放空间. <br/>
+但是, 如果父进程既没有调用wait又没有退出, 此时, 子进程虽运行结束, 确无法释放自己的进程id等信息, 依然占用着操作系统的PCB空间, 这种类型的子进程被称为僵尸进程. 僵尸进程的危害很大, 如果系统中存在大量的僵尸进程会使PCB空间占满而无法创建新的进程. <br/>
+如何消灭僵尸进程可以参看<a href="https://www.cnblogs.com/Anker/p/3271773.html">这篇文章</a>. <br/></p>
+<h3>孤儿进程与Daemon进程</h3>
+<p>实现Daemon进程的基本思想就是刻意的构造一个孤儿进程, 使之与父进程(一般是用户会话)脱钩，相当于转至后台运行, 并且可以被init进程领养, 防止其变成僵尸进程.<br/>
+当然Daemon进程具体的创建过程中还涉及一些小细节, 我会以ShadowSocks的代码为例做具体介绍.</p>
+<h2>ShadowSocks中Daemon进程的实现</h2>
+<h3>注册信号, 执行fork, 创建daemon, 退出父进程</h3>
+<div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">daemon_start</span><span class="p">(</span><span class="n">pid_file</span><span class="p">,</span> <span class="n">log_file</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="nf">handle_exit</span><span class="p">(</span><span class="n">signum</span><span class="p">,</span> <span class="n">_</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">signum</span> <span class="o">==</span> <span class="n">signal</span><span class="o">.</span><span class="n">SIGTERM</span><span class="p">:</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="n">signal</span><span class="o">.</span><span class="n">signal</span><span class="p">(</span><span class="n">signal</span><span class="o">.</span><span class="n">SIGINT</span><span class="p">,</span> <span class="n">handle_exit</span><span class="p">)</span>
+    <span class="n">signal</span><span class="o">.</span><span class="n">signal</span><span class="p">(</span><span class="n">signal</span><span class="o">.</span><span class="n">SIGTERM</span><span class="p">,</span> <span class="n">handle_exit</span><span class="p">)</span>
+
+    <span class="n">pid</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">fork</span><span class="p">()</span>
+    <span class="k">assert</span> <span class="n">pid</span> <span class="o">!=</span> <span class="o">-</span><span class="mi">1</span>
+
+    <span class="k">if</span> <span class="n">pid</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="c1"># parent waits for its child</span>
+        <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
+    <span class="c1"># child signals its parent to exit</span>
+    <span class="n">ppid</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getppid</span><span class="p">()</span>
+    <span class="n">pid</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getpid</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">write_pid_file</span><span class="p">(</span><span class="n">pid_file</span><span class="p">,</span> <span class="n">pid</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">kill</span><span class="p">(</span><span class="n">ppid</span><span class="p">,</span> <span class="n">signal</span><span class="o">.</span><span class="n">SIGINT</span><span class="p">)</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="n">os</span><span class="o">.</span><span class="n">setsid</span><span class="p">()</span>
+    <span class="c1"># ignore sighup</span>
+    <span class="n">signal</span><span class="o">.</span><span class="n">signal</span><span class="p">(</span><span class="n">signal</span><span class="o">.</span><span class="n">SIGHUP</span><span class="p">,</span> <span class="n">signal</span><span class="o">.</span><span class="n">SIG_IGN</span><span class="p">)</span>
+
+    <span class="k">print</span><span class="p">(</span><span class="s1">&#39;started&#39;</span><span class="p">)</span>
+    <span class="n">os</span><span class="o">.</span><span class="n">kill</span><span class="p">(</span><span class="n">ppid</span><span class="p">,</span> <span class="n">signal</span><span class="o">.</span><span class="n">SIGTERM</span><span class="p">)</span>
+</pre></div>
+
+
+<p>程序首先给SIGINT、SIGTERM信号注册了handle_exit处理函数, 然后执行fork, 父进程sleep 5s等待子进程将pid写入pid_file, 如果出错, 子进程发送SIGINT信号通知父进程调用handle_exit异常退出. 接着调用os.setsid()创建daemon运行的session. 然后忽略SIGHUP信号, 并发送SIGTERM信号通知父进程正常退出.<br/>
+    这里说一下<code>signal.signal(signal.SIGHUP, signal.SIG_IGN)</code>的作用, 因为父进程终止或崩溃都会导致对应子进程成为孤儿进程, 所以无法预料一个子进程执行期间是否会被"遗弃". 因此多数类UNIX系统都引入了进程组以防止产生孤儿进程: 在父进程终止后, 用户的Shell会将父进程所在进程组标为"孤儿进程组", 并向该终止进程下属的所有子进程发出SIGHUP信号, 以试图结束其运行,如此避免子进程继续以“孤儿进程”的身份运行. 因此要想让我们的daemon孤儿活下去, 就要ignore(SIG_IGN)SIGHUP信号. <br/>
+    这里ShadowSocks还把pid写入了pid_file, 毕竟父进程退出后除了init进程外就没有人知道daemon进程的id了, 因此将pid写入文件也方便我们日常监控daemon的状态.</p>
+<h3>关闭stdin</h3>
+<div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">daemon_start</span><span class="p">(</span><span class="n">pid_file</span><span class="p">,</span> <span class="n">log_file</span><span class="p">):</span>
+
+    <span class="c1"># ......</span>
+    <span class="n">sys</span><span class="o">.</span><span class="n">stdin</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="c1"># ......</span>
+</pre></div>
+
+
+<p>这样, 用户就无法通过标准输入直接控制daemon了.</p>
+<h3>记录log到文件</h3>
+<div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">daemon_start</span><span class="p">(</span><span class="n">pid_file</span><span class="p">,</span> <span class="n">log_file</span><span class="p">):</span>
+
+    <span class="c1"># ......</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">freopen</span><span class="p">(</span><span class="n">log_file</span><span class="p">,</span> <span class="s1">&#39;a&#39;</span><span class="p">,</span> <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="p">)</span>
+        <span class="n">freopen</span><span class="p">(</span><span class="n">log_file</span><span class="p">,</span> <span class="s1">&#39;a&#39;</span><span class="p">,</span> <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">IOError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="k">print</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="c1"># ......</span>
+</pre></div>
+
+
+<h3>执行daemon程序</h3>
+<p>为了简单, 我以一个while循环做例子</p>
+<div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">daemon_start</span><span class="p">(</span><span class="n">pid_file</span><span class="p">,</span> <span class="n">log_file</span><span class="p">):</span>
+
+    <span class="c1"># ......</span>
+    <span class="n">call_daemon</span><span class="p">()</span>
+
+<span class="k">def</span> <span class="nf">call_daemon</span><span class="p">():</span>
+    <span class="k">while</span> <span class="p">(</span><span class="mi">1</span><span class="p">):</span>
+        <span class="k">print</span><span class="p">(</span><span class="s2">&quot;I am a daemon, I am not be dead!</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+
+
+<h3>销毁daemon进程</h3>
+<h2>总结</h2>
+<div id="disqus_thread"></div>
+<script>
+
+/**
+*  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+*  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables*/
+/*
+var disqus_config = function () {
+this.page.url = PAGE_URL;  // Replace PAGE_URL with your page's canonical URL variable
+this.page.identifier = PAGE_IDENTIFIER; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+};
+*/
+(function() { // DON'T EDIT BELOW THIS LINE
+var d = document, s = d.createElement('script');
+s.src = 'https://neo1218flask.disqus.com/embed.js';
+s.setAttribute('data-timestamp', +new Date());
+(d.head || d.body).appendChild(s);
+})();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+                            
+    </body>
+</html>
