@@ -6,8 +6,16 @@
         <link rel="stylesheet" href="/pygments.css">
         <title>Flask权限管理</title>
     </head>
-    <body>
-        <h1>Flask权限管理</h1>
+    <body class='main page'>
+        <div class="border border-danger" style="text-align:center; position:relative;">
+            <img src=/static/img/misakar.jpg width = "280px" height="180px"></img>
+            <a class="navbar-brand" href="http://www.misakar.me">Misakar</a>
+            <a class="navbar-brand" href="#">标签分类</a>
+            <a class="navbar-brand" href="#">文章归档</a>
+        </div>
+        <hr>
+        <div class="container">
+            <h1>Flask权限管理</h1>
 <h2>基本的flask权限管理</h2>
 <h3>1. 验证字段与密码的存储</h3>
 <p>权限管理的基础就是验证字段(用户名or邮箱...)以及密码, 所以首先需要考虑验证字段和密码的存储。(这里使用flask-sqlalchemy作为ORM)</p>
@@ -216,6 +224,7 @@
 <p>然后就可以使用admin_required装饰器进行权限管理了, 这里有个坑提一下就是flask-httpauth会自己添加Basic, 所以使用该扩展的地方就不必考虑token格式的问题了。</p>
 <h3>总结</h3>
 <p>flask权限管理比较烦的地方就是如何使不同的权限管理扩展一起工作, 以及使用了扩展以后对于定制自己的东西该如何写, 这时候还是最好去看使用相应扩展的源码, 然后以此为基础, 展开自己的工作吧！</p>
+        </div>
 <div id="bootpre">
     <script>
         var x = document.getElementsByClassName("codehilite");
