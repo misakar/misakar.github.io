@@ -1,9 +1,9 @@
 <html>
     <head>
         <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+        <link href="https://cdn.bootcss.com/bootstrap/4.0.0-beta.2/css/bootstrap.min.css" rel="stylesheet" />
         <link href=/static/css/main.css rel="stylesheet" type="text/css">
         <link rel="stylesheet" href="/pygments.css">
-        <!--link href=/static/css/colorful.css rel="stylesheet" type="text/css"-->
         <title>Flask权限管理</title>
     </head>
     <body>
@@ -216,9 +216,17 @@
 <p>然后就可以使用admin_required装饰器进行权限管理了, 这里有个坑提一下就是flask-httpauth会自己添加Basic, 所以使用该扩展的地方就不必考虑token格式的问题了。</p>
 <h3>总结</h3>
 <p>flask权限管理比较烦的地方就是如何使不同的权限管理扩展一起工作, 以及使用了扩展以后对于定制自己的东西该如何写, 这时候还是最好去看使用相应扩展的源码, 然后以此为基础, 展开自己的工作吧！</p>
+<div id="bootpre">
+    <script>
+        var x = document.getElementsByClassName("codehilite");
+        for (var i = 0; i < x.length; i++)
+        {
+            x[i].childNodes[0].className = "border border-danger";
+        }
+    </script>
+</div>
 <div id="disqus_thread"></div>
 <script>
-
 /**
 *  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
 *  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables*/
@@ -236,6 +244,5 @@ s.setAttribute('data-timestamp', +new Date());
 })();
 </script>
 <noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
-                            
     </body>
 </html>
