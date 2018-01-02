@@ -860,4 +860,3 @@
         return t.fn.popover = i, this
     }
 }(jQuery), function() {}.call(this);
-

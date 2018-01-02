@@ -7,8 +7,8 @@
         <title>如何编写一个Unix Daemon</title>
     </head>
     <body class='main page'>
-        <div class="border border-danger" style="text-align:center; position:relative;">
-            <img src=/static/img/misakar.jpg width = "280px" height="180px"></img>
+        <div class="" style="text-align:center; position:relative;">
+            <img src=/static/img/misakar2.jpg width = "180px" height="180px"></img>
             <a class="navbar-brand" href="http://www.misakar.me">Misakar</a>
             <a class="navbar-brand" href="#">标签分类</a>
             <a class="navbar-brand" href="#">文章归档</a>
@@ -16,6 +16,8 @@
         <hr>
         <div class="container">
             <h1>如何编写一个Unix Daemon</h1>
+<hr/>
+
 <p>Unix Daemon就是Unix守护进程, 是指常驻在后台运行, 不与用户交互(用户无法从终端停止)的程序. Unix守护进程常被用来运行定时任务、监听用户连接等需要长时间不间断执行的程序, 比如ShadowSocks的Server就可以作为daemon运行在服务器上.<br/>
 接下来我将介绍如何编写Unix Daemon并以ShadowSocks daemon代码为实例创建、运行、销毁一个daemon.</p>
 <p><img alt="图片待定" src="" /></p>
@@ -268,6 +270,11 @@ fork()系统调用的作用非常简单, 就是从调用fork()的进程处拷贝
         {
             x[i].childNodes[0].className = "border border-danger";
         }
+    </script>
+</div>
+<div id="h1center">
+    <script>
+        var x = document.getElementsByTagName("h1")[0].style="text-align:center";
     </script>
 </div>
 <div id="disqus_thread"></div>
