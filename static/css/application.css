@@ -6536,3 +6536,12 @@ p.buttons {
         -webkit-transform: scale(1)
     }
 }
+
+.footer {
+    background: #232323;
+    padding: 15px 0 10px 0;
+    text-align: center;
+    color: #888;
+    font-size: 12px;
+    line-height: 1.5;
+}

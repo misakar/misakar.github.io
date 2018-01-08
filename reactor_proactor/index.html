@@ -1,0 +1,199 @@
+<html>
+    <head>
+        <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+        <link href="https://cdn.bootcss.com/bootstrap/4.0.0-beta.2/css/bootstrap.min.css" rel="stylesheet" />
+        <link href=/static/css/main.css rel="stylesheet" type="text/css">
+        <link rel="stylesheet" href="/pygments.css">
+        <title>Reactor VS Proactor</title>
+    </head>
+    <body class='main page'>
+        <div class="" style="text-align:center; position:relative;">
+            <img src=/static/img/misakar2.jpg width = "180px" height="180px"></img>
+            <a class="navbar-brand border border-info" href="http://www.misakar.me" style="margin-left:50px">Misaka.r.Me</a>
+        </div>
+        <hr>
+        <div class="container">
+            <h1>Reactor VS Proactor</h1>
+<p><hr>
+这是<a href="http://www.misakar.me/c10k">C10K论文学习总结系列</a>的第一篇博客. 这篇博客会介绍IO编程中的两种设计模式--Reactor和Proactor.</p>
+<h2>IO编程</h2>
+<p>IO编程指处理<code>计算机系统与外部的输入(Input)输出(Output)</code>问题的编程, 比如标准输入输出(标准IO)、文件存储(文件IO)、套接字编程(网络IO)等. <br/>
+IO编程面临的核心问题是<code>阻塞</code>. 我们刚学编程时肯定写过这样的程序:</p>
+<div class="codehilite"><pre><span></span><span class="cp">#include</span> <span class="cpf">&lt;stdio.h&gt;</span><span class="cp"></span>
+<span class="cp">#include</span> <span class="cpf">&lt;stdlib.h&gt;</span><span class="cp"></span>
+
+<span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span><span class="o">**</span> <span class="n">argv</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kt">char</span><span class="o">*</span> <span class="n">name</span> <span class="o">=</span> <span class="n">malloc</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="kt">char</span><span class="p">)</span><span class="o">*</span><span class="mi">1024</span><span class="p">);</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">&quot;what&#39;s your name: &quot;</span><span class="p">);</span>
+    <span class="n">scanf</span><span class="p">(</span><span class="s">&quot;%s&quot;</span><span class="p">,</span> <span class="n">name</span><span class="p">);</span>  <span class="c1">// blocking</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">&quot;your name is: %s</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">name</span><span class="p">);</span>
+    <span class="n">free</span><span class="p">(</span><span class="n">name</span><span class="p">);</span>
+    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>这个程序会<code>等待</code>用户输入并打印他们的名字. scanf是一个阻塞操作--如果没有接收到数据, 那么调用scanf的进程会一直等待下去, 接下来的语句不会被执行. <br/>
+这看上去似乎"人畜无害", 但是设想有2个用户使用这个程序:</p>
+<div class="codehilite"><pre><span></span><span class="cp">#include</span> <span class="cpf">&lt;stdio.h&gt;</span><span class="cp"></span>
+<span class="cp">#include</span> <span class="cpf">&lt;stdlib.h&gt;</span><span class="cp"></span>
+
+<span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span><span class="o">**</span> <span class="n">argv</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+        <span class="kt">char</span><span class="o">*</span> <span class="n">name</span> <span class="o">=</span> <span class="n">malloc</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="kt">char</span><span class="p">)</span><span class="o">*</span><span class="mi">1024</span><span class="p">);</span>
+        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;what&#39;s your name: &quot;</span><span class="p">);</span>
+        <span class="n">scanf</span><span class="p">(</span><span class="s">&quot;%s&quot;</span><span class="p">,</span> <span class="n">name</span><span class="p">);</span>  <span class="c1">// blocking</span>
+        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;your name is: %s</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">name</span><span class="p">);</span>
+        <span class="n">free</span><span class="p">(</span><span class="n">name</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>第二个用户需要<code>等待</code>第一个用户的数据被接收完后才能输入自己的名字, 而且程序并不知道第一个用户的数据会在什么时候输入. <br/>
+我们可以使用<code>多进程</code>解决这个简单问题. 但对于网络IO呢? 一个服务器可能面临上万个连接,创建上万个进程对于操作系统来说是个很大的负担. <br/></p>
+<h4>IO multiplexing(多路复用)</h4>
+<p>于是<code>操作系统</code>提供了IO多路复用机制, 该机制提供了一系列系统调用用于一次性监听多个文件描述符的状态. 如此便可以在<code>单个线程内处理多个连接</code><br/>
+以<a href="http://www.kegel.com/dkftpbench/Poller_bench.html">论文示例代码</a>中的select调用为例, 核心程序如下:</p>
+<div class="codehilite"><pre><span></span><span class="c1">// int select(int nfds, fd_set* readfds, fd_set* writefds, fd_set* exceptfds, struct timeval* timeout)</span>
+<span class="kt">int</span> <span class="n">Poller_select</span><span class="o">::</span><span class="n">waitForEvents</span><span class="p">(</span><span class="kt">int</span> <span class="n">timeout_millisec</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="n">m_testrfds</span><span class="o">=</span><span class="n">m_readfds</span><span class="p">;</span>
+    <span class="n">m_testwfds</span><span class="o">=</span><span class="n">m_writefds</span><span class="p">;</span>
+    <span class="n">m_testefds</span><span class="o">=</span><span class="n">m_exceptfds</span><span class="p">;</span>
+
+    <span class="c1">// Wait for I/O events the clients are interested in.</span>
+    <span class="n">m_rbits</span> <span class="o">=</span> <span class="n">select</span><span class="p">(</span><span class="n">m_max_fd</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">m_testrfds</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">m_testwfds</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">m_testefds</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">timeout</span><span class="p">);</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">m_rbits</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">err</span> <span class="o">=</span> <span class="n">errno</span><span class="p">;</span>
+        <span class="n">DPRINT</span><span class="p">((</span><span class="s">&quot;waitForEvents: select() returned -1, errno %d</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">err</span><span class="p">));</span>
+        <span class="k">return</span> <span class="n">err</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="n">m_cur_fd</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span><span class="p">;</span>
+    <span class="n">DPRINT</span><span class="p">((</span><span class="s">&quot;waitForEvents: got %d events</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">m_rbits</span><span class="p">));</span>
+    <span class="k">return</span> <span class="n">m_rbits</span> <span class="o">?</span> <span class="mi">0</span> <span class="o">:</span> <span class="n">EWOULDBLOCK</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>select监听readfds、writefds、exceptfds集合中文件描述符的状态:</p>
+<ul>
+<li>对于readfds中的描述符, select监听这些描述符是否可读(缓冲区中有数据);<br/></li>
+<li>对于writefds中的描述符, select监听这些描述符是否可写(缓冲区未满, 数据可以写入, 不过大量写入数据依然会block);<br/></li>
+<li>对于exceptfds中的描述符, select监听这些描述符是否出现异常.<br/></li>
+</ul>
+<p>m_rbits是select返回的3个集合中文件描述符的总数. <br/>
+IO多路复用系统调用包括:<code>select、poll、epoll</code>, 我会在本系列接下来的博客中做详细介绍.</p>
+<h4>Event Demultiplexor(多路分解)</h4>
+<p>IO多路复用帮助用户程序监听多个描述符状态, 而<code>Event Demultiplexor则将处于各种状态的文件描述符分发到对应的处理程序上</code>. <br/>
+还是以论文项目中的代码为例, 核心程序如下:</p>
+<div class="codehilite"><pre><span></span><span class="k">struct</span> <span class="n">PollEvent</span> <span class="p">{</span>
+    <span class="c1">// the file descriptor that is ready for I/O (same as in struct pollfd).</span>
+    <span class="kt">int</span> <span class="n">fd</span><span class="p">;</span>
+    <span class="c1">// the kind of I/O this fd is currently ready for (same as in struct pollfd).</span>
+    <span class="kt">short</span> <span class="n">revents</span><span class="p">;</span>
+    <span class="c1">// the object to call to handle I/O on this fd.</span>
+    <span class="n">Client</span> <span class="o">*</span><span class="n">client</span><span class="p">;</span>
+<span class="p">};</span>
+
+<span class="kt">int</span> <span class="n">Poller_select</span><span class="o">::</span><span class="n">waitAndDispatchEvents</span><span class="p">(</span><span class="kt">int</span> <span class="n">timeout_millisec</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="n">err</span> <span class="o">=</span> <span class="n">waitForEvents</span><span class="p">(</span><span class="n">timeout_millisec</span><span class="p">);</span>
+    <span class="c1">// Pump any network traffic into the appropriate Clients</span>
+    <span class="k">while</span> <span class="p">(</span><span class="n">m_rbits</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+        <span class="c1">// fill event struct with appropriate IO event</span>
+        <span class="n">err</span> <span class="o">=</span> <span class="n">getNextEvent</span><span class="p">(</span><span class="o">&amp;</span><span class="n">event</span><span class="p">);</span>
+        <span class="n">err</span> <span class="o">=</span> <span class="n">event</span><span class="p">.</span><span class="n">client</span><span class="o">-&gt;</span><span class="n">notifyPollEvent</span><span class="p">(</span><span class="o">&amp;</span><span class="n">event</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>waitAndDispatchEvents程序调用waitForEvents(包含select调用), 并通过getNextEvent将相应状态的文件描述符填充到各个事件结构体中, getNextEvent核心代码如下:</p>
+<div class="codehilite"><pre><span></span>    <span class="k">if</span> <span class="p">(</span><span class="n">revents</span> <span class="o">&amp;</span> <span class="n">POLLIN</span><span class="p">)</span>  <span class="n">m_rbits</span><span class="o">--</span><span class="p">;</span>  <span class="c1">// 可读</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">revents</span> <span class="o">&amp;</span> <span class="n">POLLOUT</span><span class="p">)</span> <span class="n">m_rbits</span><span class="o">--</span><span class="p">;</span>  <span class="c1">// 可写</span>
+<span class="cp">#ifdef Poller_URGENT</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">revents</span> <span class="o">&amp;</span> <span class="n">POLLPRI</span><span class="p">)</span> <span class="n">m_rbits</span><span class="o">--</span><span class="p">;</span>  <span class="c1">// 异常</span>
+<span class="cp">#endif</span>
+    <span class="c1">// Fill event struct.</span>
+    <span class="n">e</span><span class="o">-&gt;</span><span class="n">fd</span> <span class="o">=</span> <span class="n">m_cur_fd</span><span class="p">;</span>
+    <span class="n">e</span><span class="o">-&gt;</span><span class="n">revents</span> <span class="o">=</span> <span class="n">revents</span><span class="p">;</span>
+    <span class="n">e</span><span class="o">-&gt;</span><span class="n">client</span> <span class="o">=</span> <span class="n">m_clients</span><span class="p">[</span><span class="n">m_cur_fd</span><span class="p">];</span>
+</pre></div>
+
+
+<p>注意, <code>waitAndDispatchEvents调用select时依然是阻塞的: 除非select在指定的timeout内返回, 否则程序不会继续执行</code>, 但有了IO多路复用和多路分解, 我们就可以<code>在单线程中处理多个文件描述符并且非阻塞的调用文件描述符处理程序了(read, write...)</code>. </p>
+<h4>OS Asynchronous IO</h4>
+<p>OS Asynchronous IO是<code>操作系统提供的真正异步的IO</code>, 相比于IO多路复用, 用户程序仅需要提供缓冲区的位置和大小, 而read、write等阻塞操作都是在OS thread中执行的, 当用户程序接收到OS发送的事件信号, 从相应的缓冲区拿数据就可以了. <br/>
+我会在本系列接下来的博客中详细介绍Linux的aio(posix asyncio)和Windows的iocp. <br/></p>
+<h2>Reactor和Proactor</h2>
+<p>reactor和proactor是两种IO编程模式. reactor是基于IO多路复用的同步编程模式, 而proactor是基于OS Asynchronous IO的异步编程模式. <br/>
+对于reactor, <code>event demultiplexor在用户程序阻塞调用IO多路复用系统调用, 并执行IO</code>. 以reactor中的read操作为例:</p>
+<ol>
+<li>event handler注册文件描述符和相应的处理程序</li>
+<li>event demultiplexor阻塞等待read IO event</li>
+<li>read IO event发生(相应文件描述符状态改变), demultiplexor被信号唤醒, 调用相应描述符绑定的处理程序</li>
+<li>处理程序执行read IO操作, 因为数据已经由OS拷贝到用户缓冲区中, 此时不会阻塞
+<br/></li>
+</ol>
+<p>而对于proactor, <code>IO是在OS thread中执行的, event demultiplexor只需要等待IO完成信号即可</code>. 以proactor中的read操作为例:</p>
+<ol>
+<li>event handler注册IO完成信号和相应的处理程序</li>
+<li>event demultiplexor等待read操作完成(非阻塞)</li>
+<li>操作系统在并行的OS thread中执行read操作, 将数据拷贝到用户缓冲区, 通知event demultiplexor read操作完成</li>
+<li>event demultiplexor被IO完成信号唤醒, 调用相应的处理程序</li>
+<li>处理程序从缓冲区中拿数据,执行后续操作, 此时不会阻塞</li>
+</ol>
+<h2>统一Reactor和Proactor</h2>
+<p>IO编程很麻烦的地方在于如何实现跨平台, 不同系统有不同的API, 有的系统支持Asynchronous IO, 有的系统不支持. 虽然API大不相同, 但其实抽象接口都很相似:</p>
+<ul>
+<li>event handler注册handler</li>
+<li>event demultiplexor等待event</li>
+<li>event唤醒event demultiplexor, event demultiplexor调用handler程序</li>
+</ul>
+<p>这就是<code>libuv、nodejs、asyncio这些系统IO框架干的事了</code>. <br/>
+这里给Boost.Asio框架的设计图:
+<img alt="Boost.Asio" src="http://www.boost.org/doc/libs/1_66_0/doc/html/boost_asio/proactor.png" /></p>
+<blockquote>
+<p>On many platforms, Boost.Asio implements the Proactor design pattern in terms of a Reactor, such as select, epoll or kqueue.</p>
+</blockquote>
+<p>至于协程, 不过是在回调的基础上完成的一些小tricks. 以后的博客会细说.</p>
+        </div>
+<div id="bootpre">
+    <script>
+        var x = document.getElementsByClassName("codehilite");
+        for (var i = 0; i < x.length; i++)
+        {
+            x[i].childNodes[0].className = "border border-danger";
+        }
+    </script>
+</div>
+<div id="h1center">
+    <script>
+        var x = document.getElementsByTagName("h1")[0].style="text-align:center";
+    </script>
+</div>
+<div id="disqus_thread"></div>
+<script>
+/**
+*  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+*  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables*/
+/*
+var disqus_config = function () {
+this.page.url = PAGE_URL;  // Replace PAGE_URL with your page's canonical URL variable
+this.page.identifier = PAGE_IDENTIFIER; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+};
+*/
+(function() { // DON'T EDIT BELOW THIS LINE
+var d = document, s = d.createElement('script');
+s.src = 'https://neo1218flask.disqus.com/embed.js';
+s.setAttribute('data-timestamp', +new Date());
+(d.head || d.body).appendChild(s);
+})();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    </body>
+</html>

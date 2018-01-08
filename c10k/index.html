@@ -19,21 +19,18 @@
 <blockquote>
 <p>The C10k problem is the problem of optimising network sockets to handle a large number of clients at the same time.[1] The name C10k is a numeronym for concurrently handling ten thousand connections.[2] Note that concurrent connections are not the same as requests per second, though they are similar: handling many requests per second requires high throughput (processing them quickly), while high number of concurrent connections requires efficient scheduling of connections. (维基百科)</p>
 </blockquote>
-<p>C10K问题研究的是服务器在高并发(high number of concurrent connections)环境下的调度、处理请求的能力. 传统的服务器采用进程/线程模型, 对于每个请求创建一个进程/线程执行. 因为socket的send、recv、connect等操作<a href=""><code>需要执行系统调用--拷贝用户/内核数据到内核/用户缓冲区</code></a>, 所以这些socket操作会阻塞用户请求处理进程, 在高并发环境下, 会造成系统创建大量进程/线程, 进而造成服务器崩溃. <br/>
-解决C10K问题有四大思路:</p>
+<h2>关于本系列</h2>
+<p>本系列是我阅读论文:<a href="http://www.kegel.com/c10k.html#aio%22C10K%20article%22">《The C10K problem》</a>的学习总结, 分为以下几篇</p>
 <ol>
-<li>将"祸害"的根源--socket变为非阻塞的</li>
-<li>使用更加轻量的请求处理模型--协程</li>
-<li>在应用层面实现Asynchronous IO</li>
-<li>在操作系统层面实现Asynchronous IO</li>
+<li>[x] <a href="http://www.misakar.me/reactor_proactor">Reactor VS Proactor</a></li>
+<li>[ ] Blocking Socket VS Non-blocking Socket</li>
+<li>[ ] 非阻塞IO之Select和Poll</li>
+<li>[ ] 非阻塞IO之Epoll</li>
+<li>[ ] OS Asynchronous IO</li>
+<li>[ ] 解决C10K问题的几种方法</li>
+<li>[ ] 跨平台IO解决方案 Libuv</li>
 </ol>
-<h2>解决方案</h2>
-<h3>方案一: 使用无连接协议</h3>
-<p>这是我在<a href="https://www.zhihu.com/question/20292749">知乎:QQ 为什么以 UDP 协议为主，以 TCP 协议为辅?</a>这个问题下看到的。</p>
-<blockquote>
-<p>...原因是因为当时没有epoll这种可以支持成千上万tcp并发连接的技术,所以他们使用了udp,然后在udp上面封装了一下,模拟了一下tcp,解决了大并发的问题...</p>
-</blockquote>
-<p>对于这个解释, 我持怀疑态度. 相比于TCP, UDP的确更加轻量, 无需</p>
+<p>论文打印出来有22页, 等我把这7篇写好了, 论文应该也读完了. 有写的不对或者理解不透彻的地方希望大家在评论区指正!</p>
         </div>
 <div id="bootpre">
     <script>
