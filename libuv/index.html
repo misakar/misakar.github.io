@@ -4,7 +4,7 @@
         <link href="https://cdn.bootcss.com/bootstrap/4.0.0-beta.2/css/bootstrap.min.css" rel="stylesheet" />
         <link href=/static/css/main.css rel="stylesheet" type="text/css">
         <link rel="stylesheet" href="/pygments.css">
-        <title>C10K问题(系列)</title>
+        <title>libuv源码分析(系列)</title>
     </head>
     <body class='main page'>
         <div class="" style="text-align:center; position:relative;">
@@ -13,24 +13,21 @@
         </div>
         <hr>
         <div class="container">
-            <h1>C10K问题(系列)</h1>
-<hr/>
+            <h1>libuv源码分析(系列)</h1>
+<hr>
 
-<blockquote>
-<p>The C10k problem is the problem of optimising network sockets to handle a large number of clients at the same time.[1] The name C10k is a numeronym for concurrently handling ten thousand connections.[2] Note that concurrent connections are not the same as requests per second, though they are similar: handling many requests per second requires high throughput (processing them quickly), while high number of concurrent connections requires efficient scheduling of connections. (维基百科)</p>
-</blockquote>
-<h2>关于本系列</h2>
-<p>本系列是我阅读论文:<a href="http://www.kegel.com/c10k.html#aio%22C10K%20article%22">《The C10K problem》</a>的学习总结, 分为以下几篇</p>
+<p>本系列博客将从两个方面对libuv的源码进行解读:</p>
 <ol>
-<li>[x] <a href="http://www.misakar.me/reactor_proactor">Reactor VS Proactor</a></li>
-<li>[ ] Blocking Socket VS Non-blocking Socket</li>
-<li>[ ] 非阻塞IO之Select和Poll</li>
-<li>[ ] 非阻塞IO之Epoll</li>
-<li>[ ] OS Asynchronous IO</li>
-<li>[ ] 解决C10K问题的几种方法</li>
-<li>[ ] 跨平台IO解决方案 Libuv</li>
+<li>libuv的实现</li>
+<li>libuv源码中的技巧</li>
 </ol>
-<p>论文打印出来有22页, 等我把这7篇写好了, 论文应该也读完了. 有写的不对或者理解不透彻的地方希望大家在评论区指正!</p>
+<p><code>libuv的实现</code>更注重代码的逻辑，可能会忽略一些繁杂的代码细节，目的在于将关注点放在功能的实现上；而那些繁杂但有趣的代码则在<code>libuv源码中的技巧</code>做具体分析.</p>
+<h2>为什么要分析libuv呢?</h2>
+<p>作为一名Unix+<a href="https://github.com/ry/">Ryan Dahl</a>的狂热粉, 两者间的交集libuv自然是我必须关注的对象. <br>
+此外，从大二开始我就有一个执念--用C写Web. 或许，X年以后，我可以基于libuv实现一个C Web框架:)</p>
+<h2>目录</h2>
+<h3>libuv的实现</h3>
+<h3>libuv源码中的技巧</h3>
         </div>
 <div id="bootpre">
     <script>
