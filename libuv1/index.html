@@ -1,0 +1,158 @@
+<html>
+    <head>
+        <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+        <link href="https://cdn.bootcss.com/bootstrap/4.0.0-beta.2/css/bootstrap.min.css" rel="stylesheet" />
+        <link href=/static/css/main.css rel="stylesheet" type="text/css">
+        <link rel="stylesheet" href="/pygments.css">
+        <title>队列结构的完全[宏]实现</title>
+    </head>
+    <body class='main page'>
+        <div class="" style="text-align:center; position:relative;">
+            <img src=/static/img/misakar2.jpg width = "180px" height="180px"></img>
+            <a class="navbar-brand border border-info" href="http://www.misakar.me" style="margin-left:50px">Misaka.r.Me</a>
+        </div>
+        <hr>
+        <div class="container">
+            <h1>队列的完全[宏]实现</h1>
+<p><br/></p>
+<blockquote>
+<p>完整源码见:https://github.com/libuv/libuv/blob/v1.x/src/queue.h</p>
+</blockquote>
+<p>看libuv eventloop的实现, 看到下面的代码</p>
+<div class="codehilite"><pre><span></span><span class="kt">int</span> <span class="nf">uv_loop_init</span><span class="p">(</span><span class="n">uv_loop_t</span><span class="o">*</span> <span class="n">loop</span><span class="p">)</span> <span class="p">{</span>
+  <span class="kt">void</span><span class="o">*</span> <span class="n">saved_data</span><span class="p">;</span>
+  <span class="kt">int</span> <span class="n">err</span><span class="p">;</span>
+
+  <span class="n">uv__signal_global_once_init</span><span class="p">();</span>
+
+  <span class="n">saved_data</span> <span class="o">=</span> <span class="n">loop</span><span class="o">-&gt;</span><span class="n">data</span><span class="p">;</span>
+  <span class="n">memset</span><span class="p">(</span><span class="n">loop</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="o">*</span><span class="n">loop</span><span class="p">));</span>
+  <span class="n">loop</span><span class="o">-&gt;</span><span class="n">data</span> <span class="o">=</span> <span class="n">saved_data</span><span class="p">;</span>
+
+  <span class="n">heap_init</span><span class="p">((</span><span class="k">struct</span> <span class="n">heap</span><span class="o">*</span><span class="p">)</span> <span class="o">&amp;</span><span class="n">loop</span><span class="o">-&gt;</span><span class="n">timer_heap</span><span class="p">);</span>
+  <span class="n">QUEUE_INIT</span><span class="p">(</span><span class="o">&amp;</span><span class="n">loop</span><span class="o">-&gt;</span><span class="n">wq</span><span class="p">);</span>
+  <span class="n">QUEUE_INIT</span><span class="p">(</span><span class="o">&amp;</span><span class="n">loop</span><span class="o">-&gt;</span><span class="n">active_reqs</span><span class="p">);</span>
+  <span class="n">QUEUE_INIT</span><span class="p">(</span><span class="o">&amp;</span><span class="n">loop</span><span class="o">-&gt;</span><span class="n">idle_handles</span><span class="p">);</span>
+  <span class="n">QUEUE_INIT</span><span class="p">(</span><span class="o">&amp;</span><span class="n">loop</span><span class="o">-&gt;</span><span class="n">async_handles</span><span class="p">);</span>
+  <span class="n">QUEUE_INIT</span><span class="p">(</span><span class="o">&amp;</span><span class="n">loop</span><span class="o">-&gt;</span><span class="n">check_handles</span><span class="p">);</span>
+  <span class="n">QUEUE_INIT</span><span class="p">(</span><span class="o">&amp;</span><span class="n">loop</span><span class="o">-&gt;</span><span class="n">prepare_handles</span><span class="p">);</span>
+  <span class="n">QUEUE_INIT</span><span class="p">(</span><span class="o">&amp;</span><span class="n">loop</span><span class="o">-&gt;</span><span class="n">handle_queue</span><span class="p">);</span>
+    <span class="p">...</span> <span class="p">...</span> <span class="p">...</span> <span class="p">...</span> <span class="p">...</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p><code>QUEUE_INIT</code> 就是给定头指针(比如&amp;loop-&gt;wq, &amp;loop-&gt;active_reqs)初始化callback队列的函数. 然而有趣的是, 这里的QUEUE_INIT是一个宏:</p>
+<div class="codehilite"><pre><span></span><span class="cp">#define QUEUE_INIT(q)    \</span>
+<span class="cp">  do {                   \</span>
+<span class="cp">    QUEUE_NEXT(q) = (q); \</span>
+<span class="cp">    QUEUE_PREV(q) = (q); \</span>
+<span class="cp">  }                      \</span>
+<span class="cp">  while (0)</span>
+</pre></div>
+
+
+<p>do...while(0) 用于避免宏嵌入if...else子句中出现scope错误, 比如</p>
+<div class="codehilite"><pre><span></span><span class="k">if</span> <span class="p">(</span><span class="n">condition</span><span class="p">)</span>
+    <span class="n">QUEUE_INIT</span><span class="p">;</span>
+<span class="k">else</span>
+    <span class="n">other</span> <span class="n">code</span><span class="p">;</span>
+</pre></div>
+
+
+<p>加上do...while(0)</p>
+<div class="codehilite"><pre><span></span><span class="k">if</span> <span class="p">(</span><span class="n">condition</span><span class="p">)</span>
+    <span class="k">do</span> <span class="p">{</span>
+        <span class="n">QUEUE_NEXT</span><span class="p">(</span><span class="n">q</span><span class="p">)</span> <span class="o">=</span> <span class="p">(</span><span class="n">q</span><span class="p">);</span>
+        <span class="n">QUEUE_PREV</span><span class="p">(</span><span class="n">q</span><span class="p">)</span> <span class="o">=</span> <span class="p">(</span><span class="n">q</span><span class="p">);</span>
+    <span class="p">}</span><span class="k">while</span><span class="p">(</span><span class="mi">0</span><span class="p">);</span>
+<span class="k">else</span>
+    <span class="n">other</span> <span class="n">code</span><span class="p">;</span>
+</pre></div>
+
+
+<p>就不会报错了. <br>
+从这段代码可以看出, 这个队列是基于双向链表的; QUEUE_INIT是初始化操作: 初始状态下, 队列头节点的next和prev指针都指向自己. <br>
+来看看, <code>QUEUE_NEXT</code>:</p>
+<div class="codehilite"><pre><span></span><span class="k">typedef</span> <span class="kt">void</span><span class="o">*</span> <span class="n">QUEUE</span><span class="p">[</span><span class="mi">2</span><span class="p">];</span>
+<span class="c1">// QUEUE* q</span>
+<span class="cp">#define QUEUE_NEXT(q)  (*(QUEUE **) &amp;((*(q))[0]))</span>
+</pre></div>
+
+
+<p>初看有点懵X, 我们仔细分析一下: <br>
+首先q是一个指向QUEUE数组的指针, 类型为<code>QUEUE*</code>, 这里的QUEUE数组应该就是双向链表中的节点了; QUEUE数组中又包含两个元素, 分别对应节点的prev指针和next指针, 类型为<code>void*</code>是为了实现"泛型", 方便以后根据存储节点的type做cast; <code>(*(q))[0]</code>是QUEUE数组的第一个元素, 类型为<code>void*</code>, 然后取地址<code>&amp;(*(q))[0]</code>, 类型为<code>void**</code>, 再做类型转换<code>(QUEUE **) &amp;((*(q))[0])</code>转换为<code>QUEUE**</code>类型, 含义为指向一个指向QUEUE数组的指针的指针, 最后取该二维指针的值<code>(*(QUEUE **) &amp;((*(q))[0]))</code>, 也就是<code>QUEUE_NEXT(q)</code>, 类型为<code>QUEUE*</code>, 含义为一个指向QUEUE数组的指针, 即队列中的下一个节点.<br/>
+我一开始觉得很疑惑, 为什么要弄的这么麻烦, 为何不直接这样:<code>(QUEUE*)((*(q))[0])</code>, 这不也是指向QUEUE的指针吗? 画一下内存布局图就清楚了:</p>
+<p><img alt="queue2" src="https://user-images.githubusercontent.com/10671733/34994271-e483d8b8-fb0d-11e7-8f5a-1f63ea2249af.png" /></p>
+<p>访问节点是通过哨兵节点进行的, 所以虽然第一种和第二种代码指向的都是同一个队列节点, 但是第一种能够通过哨兵节点(<code>QUEUE* q</code>)操作队列. <br/></p>
+<p>Ryan这样写的好处是什么? 让我们看看利用了这些宏的其他操作:</p>
+<div class="codehilite"><pre><span></span><span class="cp">#define QUEUE_PREV_NEXT(q)  (QUEUE_NEXT(QUEUE_PREV(q)))</span>
+<span class="cp">#define QUEUE_NEXT_PREV(q)  (QUEUE_PREV(QUEUE_NEXT(q)))</span>
+
+<span class="cp">#define QUEUE_HEAD(q)                                          \</span>
+<span class="cp">  (QUEUE_NEXT(q))</span>
+
+<span class="cp">#define QUEUE_INIT(q)                                          \</span>
+<span class="cp">  do {                                                         \</span>
+<span class="cp">    QUEUE_NEXT(q) = (q);                                       \</span>
+<span class="cp">    QUEUE_PREV(q) = (q);                                       \</span>
+<span class="cp">  }                                                            \</span>
+<span class="cp">  while (0)</span>
+
+<span class="cp">#define QUEUE_INSERT_HEAD(h, q)                                \</span>
+<span class="cp">  do {                                                         \</span>
+<span class="cp">    QUEUE_NEXT(q) = QUEUE_NEXT(h);                             \</span>
+<span class="cp">    QUEUE_PREV(q) = (h);                                       \</span>
+<span class="cp">    QUEUE_NEXT_PREV(q) = (q);                                  \</span>
+<span class="cp">    QUEUE_NEXT(h) = (q);                                       \</span>
+<span class="cp">  }                                                            \</span>
+<span class="cp">  while (0)</span>
+
+<span class="cp">#define QUEUE_REMOVE(q)                                        \</span>
+<span class="cp">  do {                                                         \</span>
+<span class="cp">    QUEUE_PREV_NEXT(q) = QUEUE_NEXT(q);                        \</span>
+<span class="cp">    QUEUE_NEXT_PREV(q) = QUEUE_PREV(q);                        \</span>
+<span class="cp">  }                                                            \</span>
+<span class="cp">  while (0)</span>
+</pre></div>
+
+
+<p><code>QUEUE_INSERT_HEAD</code>的分析如图:</p>
+<p><img alt="queue" src="https://user-images.githubusercontent.com/10671733/34994033-3fb171ce-fb0d-11e7-925d-a5e300c0ac82.png" /></p>
+<p>可以看到, 虽然定义部分显得有些"恶心", 但是队列的实现部分非常的直观, 语义化! 莫名有种在写Python的感觉..<br/></p>
+        </div>
+<div id="bootpre">
+    <script>
+        var x = document.getElementsByClassName("codehilite");
+        for (var i = 0; i < x.length; i++)
+        {
+            x[i].childNodes[0].className = "border border-danger";
+        }
+    </script>
+</div>
+<div id="h1center">
+    <script>
+        var x = document.getElementsByTagName("h1")[0].style="text-align:center";
+    </script>
+</div>
+<div id="disqus_thread"></div>
+<script>
+/**
+*  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+*  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables*/
+/*
+var disqus_config = function () {
+this.page.url = PAGE_URL;  // Replace PAGE_URL with your page's canonical URL variable
+this.page.identifier = PAGE_IDENTIFIER; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+};
+*/
+(function() { // DON'T EDIT BELOW THIS LINE
+var d = document, s = d.createElement('script');
+s.src = 'https://neo1218flask.disqus.com/embed.js';
+s.setAttribute('data-timestamp', +new Date());
+(d.head || d.body).appendChild(s);
+})();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    </body>
+</html>
