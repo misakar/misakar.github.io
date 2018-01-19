@@ -160,7 +160,8 @@ IO多路复用系统调用包括:<code>select、poll、epoll</code>, 我会在�
 <blockquote>
 <p>On many platforms, Boost.Asio implements the Proactor design pattern in terms of a Reactor, such as select, epoll or kqueue.</p>
 </blockquote>
-<p>至于协程, 不过是改变回调执行流的tricks. 以后的博客会细说.</p>
+<h2>IO Library</h2>
+<p>很多IO Library都实现了Reactor和Proactor模式(比如上面的Boost.Asio). IO Library无论是基于callback还是coroutine, 本质上利用的都是操作系统提供的IO解决方案(多路复用、AsyncIO等), 而各个OS上的IO机制差别很大, 本系列博客关于IO Library主要介绍libuv, libuv真正解决了跨平台的系统级IO, 非常了不起! <br/></p>
         </div>
 <div id="bootpre">
     <script>

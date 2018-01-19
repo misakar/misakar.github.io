@@ -4,7 +4,7 @@
         <link href="https://cdn.bootcss.com/bootstrap/4.0.0-beta.2/css/bootstrap.min.css" rel="stylesheet" />
         <link href=/static/css/main.css rel="stylesheet" type="text/css">
         <link rel="stylesheet" href="/pygments.css">
-        <title>Coroutine in C</title>
+        <title>用C实现协程</title>
     </head>
     <body class='main page'>
         <div class="" style="text-align:center; position:relative;">
@@ -13,8 +13,35 @@
         </div>
         <hr>
         <div class="container">
-            <h1>Coroutine in C</h1>
-<p><br/></p>
+            <h1>用C实现协程</h1>
+<hr/>
+
+<h2>什么是协程</h2>
+<p>协程, 英文是coroutine或green thread, 从这两个称呼上可以一窥协程的特点: <code>协作式调度(coroutine)</code>, <code>低机器级开销(green)</code>. <br/>
+协程是<code>"人为的"对线程执行流的分割</code>. 所谓人为, 即CPU和操作系统并不需要管理和调度协程, CPU只需要处理线程的切换, 协程的切换由用户级程序完成, 而且多个协程共享单线程内存, 所以协程是低机器级开销; 此外, 因为是人为切换, 所以协程并不需要竞争CPU时间, 例如: 当consumer协程需要数据的时候, 直接从当前线程的执行栈退出, 把执行权让给productor协程, productor生成数据后再把执行权还给consumer, 当下一次consumer需要数据时, productor则从<code>退出时的执行点</code>继续向下执行生成新的数据. 上述过程的伪代码如下:</p>
+<div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">productor</span><span class="p">():</span>
+    <span class="k">for</span> <span class="n">data</span> <span class="ow">in</span> <span class="n">data_list</span><span class="p">:</span>
+        <span class="c1"># 生成新数据</span>
+        <span class="n">write_data_to_buffer</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="nb">buffer</span><span class="p">)</span>
+        <span class="n">await</span> <span class="n">consumer</span> <span class="c1"># yield productor; resume consumer</span>
+
+<span class="k">def</span> <span class="nf">consumer</span><span class="p">():</span>
+    <span class="c1"># data是data_list中的新数据, 而不是上一次生成的数据</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="n">read_data_from_buffer</span><span class="p">(</span><span class="nb">buffer</span><span class="p">)</span>  
+    <span class="n">await</span> <span class="n">productor</span> <span class="c1"># yield consumer; resume productor</span>
+
+<span class="n">productor</span><span class="p">()</span>
+</pre></div>
+
+
+<h3>如何实现协程</h3>
+<p>从上面的分析和伪代码可以看出, 实现协程的关键在于协程的切换, 即<code>multiple execution stack</code>.
+<img alt="stack" src="http://storm-enroute.com/resources/images/invoke3.png" />
+协程的切换可以简单的理解为栈间的"跳跃". <code>所以要想实现协程, 就需要实现保存、恢复以及调度每个执行栈.</code></p>
+<h2>setjmp和longjmp</h2>
+<h2>goto</h2>
+<h2>duff's device</h2>
+<h2>参考</h2>
         </div>
 <div id="bootpre">
     <script>
