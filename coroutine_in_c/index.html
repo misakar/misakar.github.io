@@ -18,7 +18,7 @@
 
 <h2>什么是协程</h2>
 <p>协程, 英文是coroutine或green thread, 从这两个称呼上可以一窥协程的特点: <code>协作式调度(coroutine)</code>, <code>低机器级开销(green)</code>. <br/>
-协程是<code>"人为的"对线程执行流的分割</code>. 所谓人为, 即CPU和操作系统并不需要管理和调度协程, CPU只需要处理线程的切换, 协程的切换由用户级程序完成, 而且多个协程共享单线程内存, 所以协程是低机器级开销; 此外, 因为是人为切换, 所以协程并不需要竞争CPU时间, 例如: 当consumer协程需要数据的时候, 直接从当前线程的执行栈退出, 把执行权让给productor协程, productor生成数据后再把执行权还给consumer, 当下一次consumer需要数据时, productor则从<code>退出时的执行点</code>继续向下执行生成新的数据. 上述过程的伪代码如下:</p>
+协程是<code>"人为的"对线程执行流的分割</code>. 所谓人为, 即CPU和操作系统并不需要管理和调度协程, CPU只需要处理线程的切换, 协程的切换由用户级程序完成, 而且多个协程共享单线程内存, 所以协程是低机器级开销的; 此外, 因为是人为切换, 所以协程并不需要竞争CPU时间, <strong>例如</strong>: 当consumer协程需要数据时, 便退出当前线程的执行栈, main thread把执行权交给给productor协程, productor生成数据后再把执行权还给consumer, 当下一次consumer需要数据时, main thread加载productor从<code>上次退出时的执行点</code>继续向下生成新的数据. 上述过程的伪代码如下:</p>
 <div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">productor</span><span class="p">():</span>
     <span class="k">for</span> <span class="n">data</span> <span class="ow">in</span> <span class="n">data_list</span><span class="p">:</span>
         <span class="c1"># 生成新数据</span>
@@ -30,18 +30,242 @@
     <span class="n">data</span> <span class="o">=</span> <span class="n">read_data_from_buffer</span><span class="p">(</span><span class="nb">buffer</span><span class="p">)</span>  
     <span class="n">await</span> <span class="n">productor</span> <span class="c1"># yield consumer; resume productor</span>
 
-<span class="n">productor</span><span class="p">()</span>
+
+<span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+    <span class="k">while</span> <span class="p">(</span><span class="n">data_len</span><span class="o">--</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">productor</span><span class="p">()</span>
+        <span class="n">consumer</span><span class="p">()</span>
+    <span class="p">}</span>
+
+<span class="n">main</span><span class="p">()</span>
 </pre></div>
 
 
 <h3>如何实现协程</h3>
 <p>从上面的分析和伪代码可以看出, 实现协程的关键在于协程的切换, 即<code>multiple execution stack</code>.
 <img alt="stack" src="http://storm-enroute.com/resources/images/invoke3.png" />
-协程的切换可以简单的理解为栈间的"跳跃". <code>所以要想实现协程, 就需要实现保存、恢复以及调度每个执行栈.</code></p>
+协程的切换可以简单的理解为栈间的"跳跃", 而main thread则负责调度多个栈. <code>所以要想实现协程, 就需要实现保存、恢复以及调度每个协程的执行栈.</code></p>
 <h2>setjmp和longjmp</h2>
-<h2>goto</h2>
-<h2>duff's device</h2>
+<p>setjmp和longjmp是POSIX提供的一组函数, 用来实现非本地跳转(nonlocal gotos). 下面这段话摘自<code>man setjmp</code>. <br/></p>
+<blockquote>
+<p><code>The setjmp() function saves various information about the calling environment</code> (typically, the stack pointer, the instruction pointer, possibly the values of  other  registers  and   <br />
+the signal mask) in the buffer env for later use by longjmp().  In this case, setjmp() returns 0.                                                                                     <br />
+<code>The  longjmp()  function  uses the information saved in env to transfer control back to the point where setjmp() was called and to restore ("rewind") the stack to its state at the
+time of the setjmp() call</code>.  In addition, and depending on the implementation (see NOTES), the values of some other registers and the process signal mask may be restored  to  their state at the time of the setjmp() call. 
+<code>Following a successful longjmp(), execution continues as if setjmp() had returned for a second time.</code>  This "fake" return can be distinguished from a true setjmp() call because the   <br />
+"fake" return returns the value provided in val.  If the programmer mistakenly passes the value 0 in val, the "fake" return will instead return 1.  </p>
+</blockquote>
+<p>从这段话以及标重部分可以看出, 这组函数非常符合我们实现协程的需要. <br/>
+先通过一段程序看看如何使用setjmp和longjmp:</p>
+<div class="codehilite"><pre><span></span><span class="cp">#include</span> <span class="cpf">&lt;stdio.h&gt;</span><span class="cp"></span>
+<span class="cp">#include</span> <span class="cpf">&lt;stdlib.h&gt;</span><span class="cp"></span>
+<span class="cp">#include</span> <span class="cpf">&lt;setjmp.h&gt;</span><span class="cp"></span>
+<span class="cp">#define not_zero_rv 1</span>
+
+<span class="kt">void</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span><span class="o">**</span> <span class="n">argv</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kt">jmp_buf</span> <span class="n">env</span><span class="p">;</span>
+    <span class="kt">int</span> <span class="n">rv</span><span class="p">;</span>
+
+    <span class="n">rv</span> <span class="o">=</span> <span class="n">setjmp</span><span class="p">(</span><span class="n">env</span><span class="p">);</span> <span class="c1">// when first called, setjmp return 0</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">&quot;rv = %d</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">rv</span><span class="p">);</span>
+
+    <span class="k">if</span> <span class="p">(</span><span class="n">rv</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)</span> <span class="n">exit</span><span class="p">(</span><span class="mi">0</span><span class="p">);</span>
+
+    <span class="n">longjmp</span><span class="p">(</span><span class="n">env</span><span class="p">,</span> <span class="n">not_zero_rv</span><span class="p">);</span>
+
+    <span class="n">printf</span><span class="p">(</span><span class="s">&quot;Does this line get printed?</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="c1">// 运行结果</span>
+<span class="n">rv</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="n">rv</span> <span class="o">=</span> <span class="mi">1</span>
+</pre></div>
+
+
+<p>当程序第一次从setjmp返回时, 返回值为0; 当程序使用longjmp跳转至setjmp返回时, 返回值为longjmp第二个参数传递的值, 在上面的程序中就是1. 然后if语句符合条件、程序退出, 最后一行不会被打印. <br/>
+OK, 那我们尝试使用setjmp和longjmp实现我们的consumer和productor协程:</p>
+<div class="codehilite"><pre><span></span><span class="cp">#include</span> <span class="cpf">&lt;stdio.h&gt;</span><span class="cp"></span>
+<span class="cp">#include</span> <span class="cpf">&lt;stdlib.h&gt;</span><span class="cp"></span>
+<span class="cp">#include</span> <span class="cpf">&lt;setjmp.h&gt;</span><span class="cp"></span>
+
+<span class="cp">#define DATA_LEN 3</span>
+<span class="k">static</span> <span class="kt">int</span> <span class="n">start</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+
+<span class="kt">int</span> <span class="nf">productor</span><span class="p">(</span><span class="kt">jmp_buf</span> <span class="n">env</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">start</span> <span class="o">==</span> <span class="mi">1</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">longjmp</span><span class="p">(</span><span class="n">env</span><span class="p">,</span> <span class="mi">1</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+    <span class="k">for</span> <span class="p">(</span><span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">DATA_LEN</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;produce %d</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">i</span><span class="p">);</span>
+        <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">setjmp</span><span class="p">(</span><span class="n">env</span><span class="p">))</span> <span class="p">{</span>
+            <span class="n">start</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span>
+            <span class="k">return</span> <span class="n">i</span><span class="p">;</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="n">i</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">int</span> <span class="nf">consumer</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">&quot;consume %d</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">i</span><span class="p">);</span>
+    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span><span class="o">**</span> <span class="n">argv</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kt">jmp_buf</span> <span class="n">env</span><span class="p">;</span>
+    <span class="kt">int</span> <span class="n">n</span> <span class="o">=</span> <span class="n">DATA_LEN</span><span class="p">,</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+
+    <span class="k">while</span> <span class="p">(</span><span class="n">n</span><span class="o">--</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">i</span> <span class="o">=</span> <span class="n">productor</span><span class="p">(</span><span class="n">env</span><span class="p">);</span>
+        <span class="n">consumer</span><span class="p">(</span><span class="n">i</span><span class="p">);</span>
+    <span class="p">}</span>
+
+    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>这段代码的基本思路如下: 每次调用productor时通过setjmp保存productor的栈环境; 每次consumer需要数据时, main thread调用productor, productor通过longjmp跳转到setjmp调用时的位置, 从而生成新的数据. <br/>
+我们来运行一下:</p>
+<div class="codehilite"><pre><span></span>$ gcc co_jmp.c <span class="o">&amp;&amp;</span> ./a.out
+produce <span class="m">0</span>
+consume <span class="m">0</span>
+produce <span class="m">1</span>
+consume <span class="m">1</span>
+produce <span class="m">2</span>
+consume <span class="m">2</span>
+</pre></div>
+
+
+<p>WOW, 目标达成!! <br/></p>
+<h2>GoTo</h2>
+<p>goto语句也是非本地跳转, 不过我不清楚goto会不会保存label所在的栈环境, 实验一下:</p>
+<div class="codehilite"><pre><span></span><span class="cp">#include</span> <span class="cpf">&lt;stdio.h&gt;</span><span class="cp"></span>
+<span class="cp">#include</span> <span class="cpf">&lt;stdlib.h&gt;</span><span class="cp"></span>
+<span class="cp">#include</span> <span class="cpf">&lt;setjmp.h&gt;</span><span class="cp"></span>
+
+<span class="cp">#define DATA_LEN 3</span>
+<span class="cp">#define PRODUCTOR 0</span>
+<span class="k">static</span> <span class="kt">int</span> <span class="n">start</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+
+<span class="kt">int</span> <span class="nf">productor</span><span class="p">()</span> <span class="p">{</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">start</span> <span class="o">==</span> <span class="mi">1</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">goto</span> <span class="n">RESTORE</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+    <span class="k">for</span> <span class="p">(</span><span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">DATA_LEN</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;produce %d</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">i</span><span class="p">);</span>
+        <span class="n">start</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span>
+        <span class="k">return</span> <span class="n">i</span><span class="p">;</span>
+        <span class="nl">RESTORE</span><span class="p">:</span><span class="n">PRODUCTOR</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="n">i</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">int</span> <span class="nf">consumer</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">&quot;consume %d</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">i</span><span class="p">);</span>
+    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span><span class="o">**</span> <span class="n">argv</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kt">int</span> <span class="n">n</span> <span class="o">=</span> <span class="n">DATA_LEN</span><span class="p">,</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+
+    <span class="k">while</span> <span class="p">(</span><span class="n">n</span><span class="o">--</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">i</span> <span class="o">=</span> <span class="n">productor</span><span class="p">();</span>
+        <span class="n">consumer</span><span class="p">(</span><span class="n">i</span><span class="p">);</span>
+    <span class="p">}</span>
+
+    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<div class="codehilite"><pre><span></span>$ gcc co_goto.c <span class="o">&amp;&amp;</span> ./a.out
+produce <span class="m">0</span>
+consume <span class="m">0</span>
+produce <span class="m">1</span>
+consume <span class="m">1</span>
+produce <span class="m">2</span>
+consume <span class="m">2</span>
+</pre></div>
+
+
+<p>看来goto也是可以的, 猜测一下, 或许C的goto就用了setjmp和longjmp呢! 不过还没找到goto的源码, 不能确认...</p>
+<h2>Duff's Device</h2>
+<p>duff's device是<a href="https://www.chiark.greenend.org.uk/~sgtatham/coroutines.html">Coroutines in C</a>这篇文章介绍的一个特别有意思的跳转结构, 用的是switch. duff's device最初的目标是做循环展开的, 从而减少循环的次数, 优化代码:</p>
+<div class="codehilite"><pre><span></span><span class="k">switch</span> <span class="p">(</span><span class="n">count</span> <span class="o">%</span> <span class="mi">8</span><span class="p">)</span> <span class="p">{</span>
+      <span class="k">case</span> <span class="mi">0</span><span class="o">:</span>        <span class="k">do</span> <span class="p">{</span>  <span class="o">*</span><span class="n">to</span> <span class="o">=</span> <span class="o">*</span><span class="n">from</span><span class="o">++</span><span class="p">;</span>
+      <span class="k">case</span> <span class="mi">7</span><span class="o">:</span>              <span class="o">*</span><span class="n">to</span> <span class="o">=</span> <span class="o">*</span><span class="n">from</span><span class="o">++</span><span class="p">;</span>
+      <span class="k">case</span> <span class="mi">6</span><span class="o">:</span>              <span class="o">*</span><span class="n">to</span> <span class="o">=</span> <span class="o">*</span><span class="n">from</span><span class="o">++</span><span class="p">;</span>
+      <span class="k">case</span> <span class="mi">5</span><span class="o">:</span>              <span class="o">*</span><span class="n">to</span> <span class="o">=</span> <span class="o">*</span><span class="n">from</span><span class="o">++</span><span class="p">;</span>
+      <span class="k">case</span> <span class="mi">4</span><span class="o">:</span>              <span class="o">*</span><span class="n">to</span> <span class="o">=</span> <span class="o">*</span><span class="n">from</span><span class="o">++</span><span class="p">;</span>
+      <span class="k">case</span> <span class="mi">3</span><span class="o">:</span>              <span class="o">*</span><span class="n">to</span> <span class="o">=</span> <span class="o">*</span><span class="n">from</span><span class="o">++</span><span class="p">;</span>
+      <span class="k">case</span> <span class="mi">2</span><span class="o">:</span>              <span class="o">*</span><span class="n">to</span> <span class="o">=</span> <span class="o">*</span><span class="n">from</span><span class="o">++</span><span class="p">;</span>
+      <span class="k">case</span> <span class="mi">1</span><span class="o">:</span>              <span class="o">*</span><span class="n">to</span> <span class="o">=</span> <span class="o">*</span><span class="n">from</span><span class="o">++</span><span class="p">;</span>
+                     <span class="p">}</span> <span class="k">while</span> <span class="p">((</span><span class="n">count</span> <span class="o">-=</span> <span class="mi">8</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>使用duff's device实现协程看Coroutines in C这篇文章好了, 我就不介绍了. 下面给出duff's device版的consumer和productor代码:</p>
+<div class="codehilite"><pre><span></span><span class="cp">#include</span> <span class="cpf">&lt;stdio.h&gt;</span><span class="cp"></span>
+<span class="cp">#include</span> <span class="cpf">&lt;stdlib.h&gt;</span><span class="cp"></span>
+
+<span class="cp">#define COBEGIN static int state = 0; switch(state) {case 0:</span>
+<span class="cp">#define CORETURN(x) do { state = __LINE__; return x; case __LINE__:; }while(0)</span>
+<span class="cp">#define COEND }</span>
+
+<span class="cp">#define DATA_LEN 3</span>
+
+<span class="kt">int</span> <span class="nf">productor</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">static</span> <span class="kt">int</span> <span class="n">i</span><span class="p">;</span>
+    <span class="n">COBEGIN</span><span class="p">;</span>
+        <span class="k">for</span> <span class="p">(</span><span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">DATA_LEN</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">printf</span><span class="p">(</span><span class="s">&quot;produce %d</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">i</span><span class="p">);</span>
+            <span class="n">CORETURN</span><span class="p">(</span><span class="n">i</span><span class="p">);</span>
+        <span class="p">}</span>
+    <span class="n">COEND</span><span class="p">;</span>
+    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">int</span> <span class="nf">consumer</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">&quot;consume %d</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">i</span><span class="p">);</span>
+    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span><span class="o">**</span> <span class="n">argv</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kt">int</span> <span class="n">n</span> <span class="o">=</span> <span class="n">DATA_LEN</span><span class="p">,</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+
+    <span class="k">while</span> <span class="p">(</span><span class="n">n</span><span class="o">--</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">i</span> <span class="o">=</span> <span class="n">productor</span><span class="p">();</span>
+        <span class="n">consumer</span><span class="p">(</span><span class="n">i</span><span class="p">);</span>
+    <span class="p">}</span>
+
+    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>这段代码相比于前两版要复杂, 主要在于跳转的实现. 需要注意的是, 这个协程其实是"伪协程",因为代码并没有实现整个协程栈的保存, 只是把关键的productor栈中的i设置为了static :) <br/>
+运行一下:</p>
+<div class="codehilite"><pre><span></span>$ gcc co_in_c.c <span class="o">&amp;&amp;</span> ./a.out
+produce <span class="m">0</span>
+consume <span class="m">0</span>
+produce <span class="m">1</span>
+consume <span class="m">1</span>
+produce <span class="m">2</span>
+consume <span class="m">2</span>
+</pre></div>
+
+
+<p>这段代码封装的COBEGIN、CORETURN、COEND使整个调用流显得非常清晰.</p>
+<h2>Stack Hack</h2>
 <h2>参考</h2>
+<ul>
+<li>$ man setjmp</li>
+<li><a href="http://web.eecs.utk.edu/~huangj/cs360/360/notes/Setjmp/lecture.html">CS360 Lecture notes -- Setjmp</a></li>
+<li><a href="https://www.chiark.greenend.org.uk/~sgtatham/coroutines.html">Coroutines in C</a></li>
+</ul>
         </div>
 <div id="bootpre">
     <script>
