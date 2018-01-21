@@ -1,0 +1,138 @@
+<html>
+    <head>
+        <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+        <link href="https://cdn.bootcss.com/bootstrap/4.0.0-beta.2/css/bootstrap.min.css" rel="stylesheet" />
+        <link href=/static/css/main.css rel="stylesheet" type="text/css">
+        <link rel="stylesheet" href="/pygments.css">
+        <title>计算机是如何启动的</title>
+    </head>
+    <body class='main page'>
+        <div class="" style="text-align:center; position:relative;">
+            <img src=/static/img/misakar2.jpg width = "180px" height="180px"></img>
+            <a class="navbar-brand border border-info" href="http://www.misakar.me" style="margin-left:50px">Misaka.r.Me</a>
+        </div>
+        <hr>
+        <div class="container">
+            <h1>计算机是如何启动的</h1>
+<p><br/></p>
+<p>我很久以前写过一篇博客:《计算机是如何启动的》, 说到了计算机启动的大致过程</p>
+<h2>let's BOOTstrap !</h2>
+<p>计算机的启动(BOOT)就是很自然的把以上概念串联起来的过程。在BOOT的过程中需要注意顺序和控制权这两个概念。<br/></p>
+<h3>第一阶段: BIOS</h3>
+<ul>
+<li>控制权: BIOS</li>
+</ul>
+<p>计算机接通电源后, 读取固化(比如烧录)到ROM芯片上的BIOS程序。首先计算机会进行硬件带电自检, 如果硬件出现问题, 启动终止, 主板发出蜂鸣; 如果一切正常, 屏幕上会显示CPU,内存信息。 <br/>
+初始化和检测完成后, BIOS需要把控制权交给下一阶段启动程序, 这可以在BIOS启动顺序列表中设置, 比如安装ubuntu时设置先从U盘启动。</p>
+<h3>第二阶段: MBR</h3>
+<ul>
+<li>控制权: 优先启动的存储设备</li>
+</ul>
+<p>这时计算机读取该设备第一个扇区的512个字节, 如果最后两个字节是0x55和0xAA, 则可以启动。如果不是, 则将控制权转给BIOS启动顺序列表中的下一个启动设备。</p>
+<h3>第三阶段: 硬盘启动</h3>
+<blockquote>
+<p>不考虑多系统情况</p>
+</blockquote>
+<ul>
+<li>控制权: 硬盘中的某个分区</li>
+</ul>
+<p>读取激活分区的第一个扇区(卷引导纪录), 加载操作系统。<br/></p>
+<h3>第四阶段: 操作系统</h3>
+<ul>
+<li>控制权: 操作系统</li>
+</ul>
+<p>操作系统的内核会被首先载入内存, 然后执行操作系统规划好的程序, 启动完成。</p>
+<hr/>
+
+<h2>深入理解</h2>
+<p>通过阅读《操作系统真相还原》, 我对上面的概念有了更细致的理解, 不再局限于文字描述, 而是理解更具体的内存布局:</p>
+<blockquote>
+<p>计算机接通电源后, 读取固化(比如烧录)到ROM芯片上的BIOS程序</p>
+</blockquote>
+<p>其实这句话暗含了一个复杂的过程, 如图: 
+<img alt="bios" src="http://7xj431.com1.z0.glb.clouddn.com/%E5%B1%8F%E5%B9%95%E5%BF%AB%E7%85%A7%202016-09-26%20%E4%B8%8B%E5%8D%8811.23.44.png" />
+计算机通过读取cs:ip寄存器中的地址找到程序执行的实际内存地址(实模式下段基址+段内偏移地址). 计算机启动时, cs:ip寄存器被强制初始化为f000:fff0, 对应实际的内存地址:0xffff0, 也就是bios的起始地址, 但是这段内存加载的程序是:</p>
+<div class="codehilite"><pre><span></span>jmpf 0xf000:e05b
+</pre></div>
+
+
+<p>0xfe05b才是bios程序真正的起始地址, 然后就是执行bios程序啦. 
+但是，为什么要跳转呢? 
+还是因为实模式, 实模式下(20位地址总线)最多可以访问1MB内存(2^20), 而bios的起始地址是0xffff0, 距离1MB的结束地址0xfffff只剩1个字节了, 自然放不下bios程序, 所以通过跳转来另辟蹊径. 至于为什么从0xffff0开始, 因为之前的内存有分配了:) 下面是实模式下的内存布局:</p>
+<div class="codehilite"><pre><span></span>  起始     结束     大小      用途
+| ---   | ---   |  ---   | ---
+| FFFF0 |FFFFF  |16B     |BIOS的入口地址
+| ---   | ---   |  ---   | ---
+| F0000 |FFFEF  |64KB-16B|顶部的640KB字节
+| ---   | ---   |  ---   | ---
+| C8000 |EFFFF  |160KB   |映射硬件适配器的ROM或者内存映射式I/O
+| ---   | ---   |  ---   | ---
+| C0000 |C7FFF  |32KB    |显示适配器BIOS
+| ---   | ---   |  ---   | ---
+| B8000 |BFFFF  |32KB    |用于文本模式显示适配器
+| ---   | ---   |  ---   | ---
+| B0000 |B7FFF  |32KB    |用于黑白显示适配器
+| ---   | ---   |  ---   | ---
+| A0000 |AFFFF  |64KB    |用于彩色显示适配器
+| ---   | ---   |  ---   | ---
+| 9FC00 |9FFFF  |1KB     |EBDA扩展BIOS数据区
+| ---   | ---   |  ---   | ---
+| 7E00  |9FBFF  |~608KB  |OS可用区域
+| ---   | ---   |  ---   | ---
+| 7C00  |7DFF   |512B    |MBR被BIOS加载到此处, 共512个字节
+| ---   | ---   |  ---   | ---
+| 500   |7BFF   |~30KB   |OS可用区域
+| ---   | ---   |  ---   | ---
+| 400   |4FF    |256B    |BIOS Data Area(BIOS数据区)
+| ---   | ---   |  ---   | ---
+| 000   |3FF    |1KB     |IVT中断向量表
+</pre></div>
+
+
+<p>这时计算机读取该设备第一个扇区的512个字节(MBR), 如果最后两个字节是0x55和0xAA(魔数), 则可以启动。<br/>
+这里的读取还是bios读取, bios会检测0盘0道1扇区(CHS表示法)512字节的最后两个字节是否是魔数:0x55和0xaa来判断并加载MBR主引导程序到0x7c00处. 至于为什么是0x7c00, 历史原因😂 ,可以参看<a href="http://www.ruanyifeng.com/blog/2015/09/0x7c00.html">阮老师的这篇文章</a>. 说个题外话, 有没有觉得MRB所在的0x7C00 512Bytes内存被夹在两个OS可用内存间很变扭, 其实MBR引导操作系统后就没有用了, 这512Bytes内存也是可以被OS覆盖并重新使用的. <br/>
+这里给出uiharu在CPU实模式下的内存布局图: <br/>
+<img alt="uiharu" src="https://cloud.githubusercontent.com/assets/10671733/20513472/00ac3f46-b0c1-11e6-96c8-a3302e6e6c83.png" /></p>
+<h3>神奇的16进制</h3>
+<p>第2章概念不难理解, 难就难在各种内存大小和内存地址转换上, 比如上面的内存布局表; 还有就是编写MBR汇编代码时<a href="http://web.ics.purdue.edu/~jricha14/Interrupts/SREG.htm">各种寄存器</a>.</p>
+<p>截图留念:)</p>
+<p><img alt="start" src="http://7xj431.com1.z0.glb.clouddn.com/%E5%B1%8F%E5%B9%95%E5%BF%AB%E7%85%A7%202016-09-26%20%E4%B8%8B%E5%8D%888.22.41.png" /></p>
+<ul>
+<li><a href="https://github.com/UiharuOS/uiharu/tree/master/boot_loader">uiharuOS bootloader</a></li>
+</ul>
+        </div>
+<div id="bootpre">
+    <script>
+        var x = document.getElementsByClassName("codehilite");
+        for (var i = 0; i < x.length; i++)
+        {
+            x[i].childNodes[0].className = "border border-danger";
+        }
+    </script>
+</div>
+<div id="h1center">
+    <script>
+        var x = document.getElementsByTagName("h1")[0].style="text-align:center";
+    </script>
+</div>
+<div id="disqus_thread"></div>
+<script>
+/**
+*  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+*  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables*/
+/*
+var disqus_config = function () {
+this.page.url = PAGE_URL;  // Replace PAGE_URL with your page's canonical URL variable
+this.page.identifier = PAGE_IDENTIFIER; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+};
+*/
+(function() { // DON'T EDIT BELOW THIS LINE
+var d = document, s = d.createElement('script');
+s.src = 'https://neo1218flask.disqus.com/embed.js';
+s.setAttribute('data-timestamp', +new Date());
+(d.head || d.body).appendChild(s);
+})();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    </body>
+</html>
