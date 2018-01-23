@@ -145,19 +145,19 @@ consume <span class="m">2</span>
 <span class="cp">#include</span> <span class="cpf">&lt;setjmp.h&gt;</span><span class="cp"></span>
 
 <span class="cp">#define DATA_LEN 3</span>
-<span class="cp">#define PRODUCTOR 0</span>
+<span class="cp">#define _consumer 0</span>
 <span class="k">static</span> <span class="kt">int</span> <span class="n">start</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
 
 <span class="kt">int</span> <span class="nf">productor</span><span class="p">()</span> <span class="p">{</span>
     <span class="k">if</span> <span class="p">(</span><span class="n">start</span> <span class="o">==</span> <span class="mi">1</span><span class="p">)</span> <span class="p">{</span>
-        <span class="k">goto</span> <span class="n">RESTORE</span><span class="p">;</span>
+        <span class="k">goto</span> <span class="n">await</span><span class="p">;</span>
     <span class="p">}</span>
     <span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
     <span class="k">for</span> <span class="p">(</span><span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">DATA_LEN</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
         <span class="n">printf</span><span class="p">(</span><span class="s">&quot;produce %d</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">i</span><span class="p">);</span>
         <span class="n">start</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span>
         <span class="k">return</span> <span class="n">i</span><span class="p">;</span>
-        <span class="nl">RESTORE</span><span class="p">:</span><span class="n">PRODUCTOR</span><span class="p">;</span>
+        <span class="nl">await</span><span class="p">:</span><span class="n">_consumer</span><span class="p">;</span>
     <span class="p">}</span>
     <span class="k">return</span> <span class="n">i</span><span class="p">;</span>
 <span class="p">}</span>
@@ -259,7 +259,6 @@ consume <span class="m">2</span>
 
 
 <p>这段代码封装的COBEGIN、CORETURN、COEND使整个调用流显得非常清晰.</p>
-<h2>Stack Hack</h2>
 <h2>参考</h2>
 <ul>
 <li>$ man setjmp</li>

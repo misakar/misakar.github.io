@@ -1,0 +1,101 @@
+<html>
+    <head>
+        <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+        <link href="https://cdn.bootcss.com/bootstrap/4.0.0-beta.2/css/bootstrap.min.css" rel="stylesheet" />
+        <link href=/static/css/main.css rel="stylesheet" type="text/css">
+        <link rel="stylesheet" href="/pygments.css">
+        <title>OAuth 101</title>
+    </head>
+    <body class='main page'>
+        <div class="" style="text-align:center; position:relative;">
+            <img src=/static/img/misakar2.jpg width = "180px" height="180px"></img>
+            <a class="navbar-brand border border-info" href="http://www.misakar.me" style="margin-left:50px">Misaka.r.Me</a>
+        </div>
+        <hr>
+        <div class="container">
+            <h1>OAuth 101</h1>
+<hr/>
+
+<h2>0. 什么是OAuth</h2>
+<p>OAuth是一个处理<code>用户数据访问授权</code>的开放标准, 相比于传统的用户名密码登录授权机制, OAuth流程限制用户的密码在网络上传播, 保证了用户的访问安全.<br/>
+目前谷歌、亚马逊等大公司都使用了OAuth标准: <a href="https://developers.google.com/identity/protocols/OAuth2">谷歌OAuth授权文档</a>. <br/>
+OAuth标准由<a href="https://datatracker.ietf.org/doc/rfc6749/">RFC6749</a>描述. </p>
+<h3>OAuth1.0 VS OAuth2.0</h3>
+<p>OAuth2.0相比于OAuth1.0在以下方面做出了改进:<br/>
+<strong><code>要求HTTPS</code></strong><br/>
+OAuth1.0时期https还没有普及, OAuth1.0为了保证验证数据不被中间人拦截, 要求加密(clientID、secret), 一方面使用什么加密方法是个问题, 另一方面加密后的URL也更加复杂不利于用户copy~paste. 而OAuth2.0要求所有的请求都在HTTPS下进行, 省去了加密的麻烦, 也使得URL更加简单. <br/>
+<strong><code>更好的用户体验</code></strong><br/>
+OAuth1.0对手机、桌面原生应用的支持不太好, 而OAuth2.0支持更灵活的Redirect URI注册(下面会具体介绍), 提供了更好的原生应用体验. <br/>
+<strong><code>高并发支持</code></strong><br/>
+OAuth2.0将授权流程和使用token请求API完全隔离(两者间没有任何参数需要传递), 这非常适合一些将授权和业务放在不同服务器上的后端场景, 验证服务器和业务服务器可以完全按照各自的访问量做扩容.
+<hr/>
+接下来的介绍都将使用OAuth2.0.</p>
+<h2>1. OAuth2.0验证流程</h2>
+<p>OAuth2.0的验证流程可以归结为三个步骤: </p>
+<ol>
+<li><code>应用注册Redirect URI</code></li>
+<li><code>应用请求授权码</code></li>
+<li><code>应用请求token</code></li>
+</ol>
+<p>不同的应用类型在参数上会有细微的不同, 下面做具体介绍.(困得不行了, 睡觉吧...)</p>
+<h3>Server Side APP</h3>
+<h3>Single Page APP</h3>
+<h3>Mobile Native APP</h3>
+<p><strong>App-Claimed https URL Redirection</strong><br/></p>
+<p><strong>Custom URL Scheme</strong><br/></p>
+<h4>PKCE</h4>
+<h3>通用验证流程</h3>
+<h3>Password</h3>
+<h3>OpenID</h3>
+<h2>2. 使用Authlib编写一个OAuth Server</h2>
+<h2>3. 木犀是怎么做的?</h2>
+<h3>UserName/Password Exchange For Token</h3>
+<h3>MuxiOOOOOAuth</h3>
+<h3>可以改进的地方</h3>
+<h2>4. 参考</h2>
+        </div>
+<div id="bootpre">
+    <script>
+        var x = document.getElementsByClassName("codehilite");
+        for (var i = 0; i < x.length; i++)
+        {
+            x[i].childNodes[0].className = "border border-danger";
+        }
+    </script>
+</div>
+<div id="h1center">
+    <script>
+        var x = document.getElementsByTagName("h1")[0].style="text-align:center";
+    </script>
+</div>
+<div id="_blank">
+    <script>
+        var as = document.getElementsByTagName('a');
+        // alert(as[1]);
+        for (var i = 1; i < as.length; i++) {
+            // as[i].style="target: _blank";
+            as[i].setAttribute('target', '_blank');
+        }
+    </script>
+</div>
+<div id="disqus_thread"></div>
+<script>
+/**
+*  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+*  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables*/
+/*
+var disqus_config = function () {
+this.page.url = PAGE_URL;  // Replace PAGE_URL with your page's canonical URL variable
+this.page.identifier = PAGE_IDENTIFIER; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+};
+*/
+(function() { // DON'T EDIT BELOW THIS LINE
+var d = document, s = d.createElement('script');
+s.src = 'https://neo1218flask.disqus.com/embed.js';
+s.setAttribute('data-timestamp', +new Date());
+(d.head || d.body).appendChild(s);
+})();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    </body>
+</html>

@@ -1,0 +1,274 @@
+<html>
+    <head>
+        <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+        <link href="https://cdn.bootcss.com/bootstrap/4.0.0-beta.2/css/bootstrap.min.css" rel="stylesheet" />
+        <link href=/static/css/main.css rel="stylesheet" type="text/css">
+        <link rel="stylesheet" href="/pygments.css">
+        <title>libco共享栈的实现</title>
+    </head>
+    <body class='main page'>
+        <div class="" style="text-align:center; position:relative;">
+            <img src=/static/img/misakar2.jpg width = "180px" height="180px"></img>
+            <a class="navbar-brand border border-info" href="http://www.misakar.me" style="margin-left:50px">Misaka.r.Me</a>
+        </div>
+        <hr>
+        <div class="container">
+            <h1>libco共享栈的实现</h1>
+<hr/>
+
+<h2>stackful coroutine</h2>
+<p>libco的协程是stackful coroutine: <code>每个协程都拥有一个独立的栈帧, 协程切换时会保存当前协程栈中的所有数据, 并加载新的栈帧对象</code>. 这样做的优点是: 协程调度可以在内存中的任意位置、任意时刻进行; 但是缺点也很明显:  <code>随着并发量的增加, 协程的数目越来越多, 当前内存中的协程栈(无论是occupy还是suspend)越来越多, 内存瓶颈开始显现, 且内存切换本身也是不小的开销(寄存器恢复、数据拷贝).</code> 所以, stackful coroutine一般有栈大小的限制(libco是128K). </p>
+<h2>share stack</h2>
+<p>那么能不能所有<code>正在执行的协程都共享一个栈呢?</code>这就是共享栈的思路. 共享栈将协程划分为协程组, 同一个协程组中的协程共享同一块内存, <code>在协程切换的时候将当前内存中的数据保存到运行协程的buffer中, 并将新调度协程buffer中的数据拷贝到共享栈中</code>. 如此既可以减少内存开销, 同时运行协程又没有了栈大小的限制. 但是"鱼和熊掌不可兼得"(我居然会有谚语orz), 共享栈的缺点是: <code>协程调度产生的局部变量都在共享栈上,  一旦新的协程运行后共享栈中的数据就会被覆盖, 先前协程的局部变量也就不再有效, 进而无法实现参数传递、嵌套调用等高级协程交互.</code> 不过libco作为一个生产库, 不是研究协程语法的, 每个协程作为一个"原子"的调用例程就够用了. <br/>
+此外, libco的协程在共享栈上的切换还实现了<code>copy-on-write</code>, 只有共享栈内存改变时才进行数据拷贝, 这是传统的stackful coroutine所无法实现的.</p>
+<h2>源码分析</h2>
+<blockquote>
+<p>友情提示::以食用注释为主, 代码段之间的文字是胶水.想吃的话也是可以的...逃</p>
+</blockquote>
+<p>OK, 开始看源码. 首先来看一下libco中共享栈的创建:</p>
+<div class="codehilite"><pre><span></span><span class="k">struct</span> <span class="n">stShareStack_t</span>
+<span class="p">{</span>
+    <span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">alloc_idx</span><span class="p">;</span> <span class="c1">// 用于分配共享栈(RoundRobin)</span>
+    <span class="kt">int</span> <span class="n">stack_size</span><span class="p">;</span> <span class="c1">// 共享栈的大小</span>
+    <span class="kt">int</span> <span class="n">count</span><span class="p">;</span> <span class="c1">// 共享栈的数目</span>
+    <span class="n">stStackMem_t</span><span class="o">**</span> <span class="n">stack_array</span><span class="p">;</span> <span class="c1">// 协程组</span>
+<span class="p">};</span>
+
+<span class="n">stShareStack_t</span><span class="o">*</span> <span class="nf">co_alloc_sharestack</span><span class="p">(</span><span class="kt">int</span> <span class="n">count</span><span class="p">,</span> <span class="kt">int</span> <span class="n">stack_size</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="cm">/***</span>
+<span class="cm">     * count: 共享栈的数目</span>
+<span class="cm">     * stack_size: 共享栈的大小</span>
+<span class="cm">     */</span>
+    <span class="n">stShareStack_t</span><span class="o">*</span> <span class="n">share_stack</span> <span class="o">=</span> <span class="p">(</span><span class="n">stShareStack_t</span><span class="o">*</span><span class="p">)</span><span class="n">malloc</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="n">stShareStack_t</span><span class="p">));</span>
+    <span class="n">share_stack</span><span class="o">-&gt;</span><span class="n">alloc_idx</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+    <span class="n">share_stack</span><span class="o">-&gt;</span><span class="n">stack_size</span> <span class="o">=</span> <span class="n">stack_size</span><span class="p">;</span>
+
+    <span class="n">share_stack</span><span class="o">-&gt;</span><span class="n">count</span> <span class="o">=</span> <span class="n">count</span><span class="p">;</span>
+    <span class="n">stStackMem_t</span><span class="o">**</span> <span class="n">stack_array</span> <span class="o">=</span> <span class="p">(</span><span class="n">stStackMem_t</span><span class="o">**</span><span class="p">)</span><span class="n">calloc</span><span class="p">(</span><span class="n">count</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">stStackMem_t</span><span class="o">*</span><span class="p">));</span>
+    <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">count</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="c1">// 分配共享栈内存</span>
+        <span class="n">stack_array</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">co_alloc_stackmem</span><span class="p">(</span><span class="n">stack_size</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="n">share_stack</span><span class="o">-&gt;</span><span class="n">stack_array</span> <span class="o">=</span> <span class="n">stack_array</span><span class="p">;</span>
+    <span class="k">return</span> <span class="n">share_stack</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p><code>co_alloc_stackmem</code>用于分配共享栈内存, 实现如下:</p>
+<div class="codehilite"><pre><span></span><span class="k">struct</span> <span class="n">stStackMem_t</span>
+<span class="p">{</span>
+    <span class="n">stCoRoutine_t</span><span class="o">*</span> <span class="n">occupy_co</span><span class="p">;</span> <span class="c1">// 正使用该共享栈的协程</span>
+    <span class="kt">int</span> <span class="n">stack_size</span><span class="p">;</span> <span class="c1">// 该共享栈的大小</span>
+    <span class="kt">char</span><span class="o">*</span> <span class="n">stack_bp</span><span class="p">;</span> <span class="c1">// 共享栈基址</span>
+    <span class="kt">char</span><span class="o">*</span> <span class="n">stack_buffer</span><span class="p">;</span> <span class="c1">// 共享栈的内存</span>
+
+<span class="p">};</span>
+
+<span class="n">stStackMem_t</span><span class="o">*</span> <span class="nf">co_alloc_stackmem</span><span class="p">(</span><span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">stack_size</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="cm">/***</span>
+<span class="cm">     *  分配共享栈内存</span>
+<span class="cm">     */</span>
+    <span class="n">stStackMem_t</span><span class="o">*</span> <span class="n">stack_mem</span> <span class="o">=</span> <span class="p">(</span><span class="n">stStackMem_t</span><span class="o">*</span><span class="p">)</span><span class="n">malloc</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="n">stStackMem_t</span><span class="p">));</span>
+    <span class="n">stack_mem</span><span class="o">-&gt;</span><span class="n">occupy_co</span><span class="o">=</span> <span class="nb">NULL</span><span class="p">;</span>  <span class="c1">// 正使用该共享栈的协程(初始为空)</span>
+    <span class="n">stack_mem</span><span class="o">-&gt;</span><span class="n">stack_size</span> <span class="o">=</span> <span class="n">stack_size</span><span class="p">;</span>
+    <span class="n">stack_mem</span><span class="o">-&gt;</span><span class="n">stack_buffer</span> <span class="o">=</span> <span class="p">(</span><span class="kt">char</span><span class="o">*</span><span class="p">)</span><span class="n">malloc</span><span class="p">(</span><span class="n">stack_size</span><span class="p">);</span> <span class="c1">// 给该共享栈分配存储空间</span>
+    <span class="n">stack_mem</span><span class="o">-&gt;</span><span class="n">stack_bp</span> <span class="o">=</span> <span class="n">stack_mem</span><span class="o">-&gt;</span><span class="n">stack_buffer</span> <span class="o">+</span> <span class="n">stack_size</span><span class="p">;</span> <span class="c1">// 更新栈基址</span>
+    <span class="k">return</span> <span class="n">stack_mem</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>这里需要注意, 在内存模型中栈是位于高位向低地址扩展的, 所以这里的共享栈基址计算<code>stack_bp是stack_buffer地址加上stack_size</code></p>
+<div class="codehilite"><pre><span></span>                            HI-------------&gt; stack_bp
+                              |  buffer |} stack_size
+                            | |------------&gt; stack_buffer
+                            v |         |
+                              |         |
+                            LO-----------
+</pre></div>
+
+
+<p>经过以上几步, 共享栈就创建成功了. 接下来就是在创建协程的时候, 给每个协程分配共享栈, 关键代码如下:</p>
+<div class="codehilite"><pre><span></span><span class="k">struct</span> <span class="n">stCoRoutine_t</span> <span class="o">*</span><span class="nf">co_create_env</span><span class="p">(</span> <span class="n">stCoRoutineEnv_t</span> <span class="o">*</span> <span class="n">env</span><span class="p">,</span> <span class="k">const</span> <span class="n">stCoRoutineAttr_t</span><span class="o">*</span> <span class="n">attr</span><span class="p">,</span>
+        <span class="n">pfn_co_routine_t</span> <span class="n">pfn</span><span class="p">,</span><span class="kt">void</span> <span class="o">*</span><span class="n">arg</span> <span class="p">)</span>
+<span class="p">{</span>
+    <span class="cm">/***</span>
+<span class="cm">     * 创建协程</span>
+<span class="cm">     */</span>
+    <span class="n">stCoRoutineAttr_t</span> <span class="n">at</span><span class="p">;</span>
+    <span class="k">if</span><span class="p">(</span> <span class="n">attr</span> <span class="p">)</span>
+    <span class="p">{</span>
+        <span class="n">memcpy</span><span class="p">(</span> <span class="o">&amp;</span><span class="n">at</span><span class="p">,</span><span class="n">attr</span><span class="p">,</span><span class="k">sizeof</span><span class="p">(</span><span class="n">at</span><span class="p">)</span> <span class="p">);</span>
+    <span class="p">}</span>
+    <span class="cm">/********与共享栈无关, 省略*********/</span>
+    <span class="n">stStackMem_t</span><span class="o">*</span> <span class="n">stack_mem</span> <span class="o">=</span> <span class="nb">NULL</span><span class="p">;</span>
+    <span class="k">if</span><span class="p">(</span> <span class="n">at</span><span class="p">.</span><span class="n">share_stack</span> <span class="p">)</span>
+    <span class="p">{</span>
+        <span class="c1">// 分配共享栈</span>
+        <span class="n">stack_mem</span> <span class="o">=</span> <span class="n">co_get_stackmem</span><span class="p">(</span> <span class="n">at</span><span class="p">.</span><span class="n">share_stack</span><span class="p">);</span>
+        <span class="n">at</span><span class="p">.</span><span class="n">stack_size</span> <span class="o">=</span> <span class="n">at</span><span class="p">.</span><span class="n">share_stack</span><span class="o">-&gt;</span><span class="n">stack_size</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="k">else</span>
+    <span class="p">{</span>
+    <span class="cm">/********与共享栈无关, 省略*********/</span>
+    <span class="p">}</span>
+    <span class="cm">/********与共享栈无关, 省略*********/</span>
+    <span class="k">return</span> <span class="n">lp</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p><code>co_get_stackmem</code>用于分配共享栈给各个协程, 实现如下:</p>
+<div class="codehilite"><pre><span></span><span class="k">static</span> <span class="n">stStackMem_t</span><span class="o">*</span> <span class="nf">co_get_stackmem</span><span class="p">(</span><span class="n">stShareStack_t</span><span class="o">*</span> <span class="n">share_stack</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="cm">/***</span>
+<span class="cm">     * 分配共享栈</span>
+<span class="cm">     */</span>
+    <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">share_stack</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="nb">NULL</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="c1">// 基于alloc_idx采用RoundRobin策略分配共享栈</span>
+    <span class="kt">int</span> <span class="n">idx</span> <span class="o">=</span> <span class="n">share_stack</span><span class="o">-&gt;</span><span class="n">alloc_idx</span> <span class="o">%</span> <span class="n">share_stack</span><span class="o">-&gt;</span><span class="n">count</span><span class="p">;</span>
+    <span class="n">share_stack</span><span class="o">-&gt;</span><span class="n">alloc_idx</span><span class="o">++</span><span class="p">;</span>
+
+    <span class="k">return</span> <span class="n">share_stack</span><span class="o">-&gt;</span><span class="n">stack_array</span><span class="p">[</span><span class="n">idx</span><span class="p">];</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>libco采用RoundRobin策略分配共享栈, 很简单.<br/>
+共享栈的创建、分配都实现了, 接下来看看协程在调度切换中是如何实现栈数据的保存和恢复的:</p>
+<div class="codehilite"><pre><span></span><span class="kt">void</span> <span class="nf">co_swap</span><span class="p">(</span><span class="n">stCoRoutine_t</span><span class="o">*</span> <span class="n">curr</span><span class="p">,</span> <span class="n">stCoRoutine_t</span><span class="o">*</span> <span class="n">pending_co</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="cm">/***</span>
+<span class="cm">     * 协程切换: curr --&gt; pending_co</span>
+<span class="cm">     */</span>
+    <span class="n">stCoRoutineEnv_t</span><span class="o">*</span> <span class="n">env</span> <span class="o">=</span> <span class="n">co_get_curr_thread_env</span><span class="p">();</span>
+
+    <span class="kt">char</span> <span class="n">c</span><span class="p">;</span>
+    <span class="n">curr</span><span class="o">-&gt;</span><span class="n">stack_sp</span><span class="o">=</span> <span class="o">&amp;</span><span class="n">c</span><span class="p">;</span> <span class="c1">// 创建一个局部变量, 此时位于的栈顶</span>
+
+    <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">pending_co</span><span class="o">-&gt;</span><span class="n">cIsShareStack</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="n">env</span><span class="o">-&gt;</span><span class="n">pending_co</span> <span class="o">=</span> <span class="nb">NULL</span><span class="p">;</span>
+        <span class="n">env</span><span class="o">-&gt;</span><span class="n">occupy_co</span> <span class="o">=</span> <span class="nb">NULL</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="k">else</span> 
+    <span class="p">{</span>
+        <span class="c1">// 共享栈</span>
+        <span class="n">env</span><span class="o">-&gt;</span><span class="n">pending_co</span> <span class="o">=</span> <span class="n">pending_co</span><span class="p">;</span>
+        <span class="c1">// pending_co和occupy_co共享stack_mem,</span>
+        <span class="c1">// 从pending_co中取出occupy_co是为了接下来的copy-on-write判断</span>
+        <span class="n">stCoRoutine_t</span><span class="o">*</span> <span class="n">occupy_co</span> <span class="o">=</span> <span class="n">pending_co</span><span class="o">-&gt;</span><span class="n">stack_mem</span><span class="o">-&gt;</span><span class="n">occupy_co</span><span class="p">;</span>
+        <span class="c1">// 更新stack_mem和env的occupy_co协程</span>
+        <span class="n">pending_co</span><span class="o">-&gt;</span><span class="n">stack_mem</span><span class="o">-&gt;</span><span class="n">occupy_co</span> <span class="o">=</span> <span class="n">pending_co</span><span class="p">;</span>
+        <span class="n">env</span><span class="o">-&gt;</span><span class="n">occupy_co</span> <span class="o">=</span> <span class="n">occupy_co</span><span class="p">;</span>
+
+        <span class="k">if</span> <span class="p">(</span><span class="n">occupy_co</span> <span class="o">&amp;&amp;</span> <span class="n">occupy_co</span> <span class="o">!=</span> <span class="n">pending_co</span><span class="p">)</span>
+        <span class="p">{</span>
+            <span class="c1">// copy-on-write, 不是同一个协程时, 进行内存数据拷贝</span>
+            <span class="c1">// 将occupy_co协程的数据拷贝出共享栈(copy out)</span>
+            <span class="n">save_stack_buffer</span><span class="p">(</span><span class="n">occupy_co</span><span class="p">);</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="c1">// 协程切换, coctx_swap是汇编函数, 以后博客会具体介绍   </span>
+    <span class="n">coctx_swap</span><span class="p">(</span><span class="o">&amp;</span><span class="p">(</span><span class="n">curr</span><span class="o">-&gt;</span><span class="n">ctx</span><span class="p">),</span><span class="o">&amp;</span><span class="p">(</span><span class="n">pending_co</span><span class="o">-&gt;</span><span class="n">ctx</span><span class="p">)</span> <span class="p">);</span>
+
+    <span class="c1">//stack buffer may be overwrite, so get again;</span>
+    <span class="n">stCoRoutineEnv_t</span><span class="o">*</span> <span class="n">curr_env</span> <span class="o">=</span> <span class="n">co_get_curr_thread_env</span><span class="p">();</span>
+    <span class="n">stCoRoutine_t</span><span class="o">*</span> <span class="n">update_occupy_co</span> <span class="o">=</span>  <span class="n">curr_env</span><span class="o">-&gt;</span><span class="n">occupy_co</span><span class="p">;</span>
+    <span class="n">stCoRoutine_t</span><span class="o">*</span> <span class="n">update_pending_co</span> <span class="o">=</span> <span class="n">curr_env</span><span class="o">-&gt;</span><span class="n">pending_co</span><span class="p">;</span>
+
+    <span class="k">if</span> <span class="p">(</span><span class="n">update_occupy_co</span> <span class="o">&amp;&amp;</span> <span class="n">update_pending_co</span> <span class="o">&amp;&amp;</span> <span class="n">update_occupy_co</span> <span class="o">!=</span> <span class="n">update_pending_co</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">update_pending_co</span><span class="o">-&gt;</span><span class="n">save_buffer</span> <span class="o">&amp;&amp;</span> <span class="n">update_pending_co</span><span class="o">-&gt;</span><span class="n">save_size</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="p">{</span>
+            <span class="c1">// copy-on-write, 不是同一个协程时, 进行内存数据拷贝</span>
+            <span class="c1">// 将pending_co协程的数据拷贝入共享栈(copy in)</span>
+            <span class="n">memcpy</span><span class="p">(</span><span class="n">update_pending_co</span><span class="o">-&gt;</span><span class="n">stack_sp</span><span class="p">,</span> <span class="n">update_pending_co</span><span class="o">-&gt;</span><span class="n">save_buffer</span><span class="p">,</span> <span class="n">update_pending_co</span><span class="o">-&gt;</span><span class="n">save_size</span><span class="p">);</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p><code>save_stack_buffer</code>用于实现协程数据的copy out, 代码如下:</p>
+<div class="codehilite"><pre><span></span><span class="kt">void</span> <span class="nf">save_stack_buffer</span><span class="p">(</span><span class="n">stCoRoutine_t</span><span class="o">*</span> <span class="n">occupy_co</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="cm">/***</span>
+<span class="cm">     * copy out</span>
+<span class="cm">     */</span>
+    <span class="n">stStackMem_t</span><span class="o">*</span> <span class="n">stack_mem</span> <span class="o">=</span> <span class="n">occupy_co</span><span class="o">-&gt;</span><span class="n">stack_mem</span><span class="p">;</span>
+    <span class="kt">int</span> <span class="n">len</span> <span class="o">=</span> <span class="n">stack_mem</span><span class="o">-&gt;</span><span class="n">stack_bp</span> <span class="o">-</span> <span class="n">occupy_co</span><span class="o">-&gt;</span><span class="n">stack_sp</span><span class="p">;</span> <span class="c1">// 需要拷贝的数据长度</span>
+
+    <span class="k">if</span> <span class="p">(</span><span class="n">occupy_co</span><span class="o">-&gt;</span><span class="n">save_buffer</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="c1">// 释放先前保存的内存数据</span>
+        <span class="n">free</span><span class="p">(</span><span class="n">occupy_co</span><span class="o">-&gt;</span><span class="n">save_buffer</span><span class="p">),</span> <span class="n">occupy_co</span><span class="o">-&gt;</span><span class="n">save_buffer</span> <span class="o">=</span> <span class="nb">NULL</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="n">occupy_co</span><span class="o">-&gt;</span><span class="n">save_buffer</span> <span class="o">=</span> <span class="p">(</span><span class="kt">char</span><span class="o">*</span><span class="p">)</span><span class="n">malloc</span><span class="p">(</span><span class="n">len</span><span class="p">);</span>
+    <span class="n">occupy_co</span><span class="o">-&gt;</span><span class="n">save_size</span> <span class="o">=</span> <span class="n">len</span><span class="p">;</span>
+
+    <span class="c1">// 栈是向下增长的, 所以从stack_sp开始拷贝</span>
+    <span class="c1">// 此时, occupy_co还在共享栈上了(coctx_swap还没开始), 所以可以直接从stack_sp开始拷贝</span>
+    <span class="n">memcpy</span><span class="p">(</span><span class="n">occupy_co</span><span class="o">-&gt;</span><span class="n">save_buffer</span><span class="p">,</span> <span class="n">occupy_co</span><span class="o">-&gt;</span><span class="n">stack_sp</span><span class="p">,</span> <span class="n">len</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<h2>结语</h2>
+<p>共享栈的思想由来已久, 很多操作系统的内存管理策略中都有共享栈的应用. 由上面的源码分析可以看出共享栈的实现并不复杂, 协程的调度切换模型配合共享栈以及写时复制, libco可以实现千万级的协程支持, 这也是它作为微信后端核心框架的原因. <br/>
+下面一篇博客会聚焦于<code>libco协程调度切换的实现</code>.</p>
+        </div>
+<div id="bootpre">
+    <script>
+        var x = document.getElementsByClassName("codehilite");
+        for (var i = 0; i < x.length; i++)
+        {
+            x[i].childNodes[0].className = "border border-danger";
+        }
+    </script>
+</div>
+<div id="h1center">
+    <script>
+        var x = document.getElementsByTagName("h1")[0].style="text-align:center";
+    </script>
+</div>
+<div id="_blank">
+    <script>
+        var as = document.getElementsByTagName('a');
+        // alert(as[1]);
+        for (var i = 1; i < as.length; i++) {
+            // as[i].style="target: _blank";
+            as[i].setAttribute('target', '_blank');
+        }
+    </script>
+</div>
+<div id="disqus_thread"></div>
+<script>
+/**
+*  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+*  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables*/
+/*
+var disqus_config = function () {
+this.page.url = PAGE_URL;  // Replace PAGE_URL with your page's canonical URL variable
+this.page.identifier = PAGE_IDENTIFIER; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+};
+*/
+(function() { // DON'T EDIT BELOW THIS LINE
+var d = document, s = d.createElement('script');
+s.src = 'https://neo1218flask.disqus.com/embed.js';
+s.setAttribute('data-timestamp', +new Date());
+(d.head || d.body).appendChild(s);
+})();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    </body>
+</html>

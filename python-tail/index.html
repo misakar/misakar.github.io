@@ -1,0 +1,219 @@
+<html>
+    <head>
+        <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+        <link href="https://cdn.bootcss.com/bootstrap/4.0.0-beta.2/css/bootstrap.min.css" rel="stylesheet" />
+        <link href=/static/css/main.css rel="stylesheet" type="text/css">
+        <link rel="stylesheet" href="/pygments.css">
+        <title>Python尾递归优化</title>
+    </head>
+    <body class='main page'>
+        <div class="" style="text-align:center; position:relative;">
+            <img src=/static/img/misakar2.jpg width = "180px" height="180px"></img>
+            <a class="navbar-brand border border-info" href="http://www.misakar.me" style="margin-left:50px">Misaka.r.Me</a>
+        </div>
+        <hr>
+        <div class="container">
+            <h1>Python尾递归优化</h1>
+<hr/>
+
+<h2>一般递归与尾递归</h2>
+<h3>一般递归:</h3>
+<div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">normal_recursion</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">return</span> <span class="mi">1</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">n</span> <span class="o">+</span> <span class="n">normal_recursion</span><span class="p">(</span><span class="n">n</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+</pre></div>
+
+
+<p>执行：</p>
+<div class="codehilite"><pre><span></span>normal_recursion(5)
+5 + normal_recursion(4)
+5 + 4 + normal_recursion(3)
+5 + 4 + 3 + normal_recursion(2)
+5 + 4 + 3 + 2 + normal_recursion(1)
+5 + 4 + 3 + 3
+5 + 4 + 6
+5 + 10
+15
+</pre></div>
+
+
+<p>可以看到, 一般递归, 每一级递归都产生了新的局部变量, 必须创建新的调用栈, 随着递归深度的增加, 创建的栈越来越多, 造成爆栈💥</p>
+<h3>尾递归</h3>
+<p>尾递归基于函数的尾调用, 每一级调用直接返回递归函数更新调用栈, 没有新局部变量的产生, 类似迭代的实现:</p>
+<div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">tail_recursion</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">total</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">tail_recursion</span><span class="p">(</span><span class="n">n</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">total</span><span class="o">+</span><span class="n">n</span><span class="p">)</span>
+</pre></div>
+
+
+<p>执行：</p>
+<div class="codehilite"><pre><span></span>tail_recursion(5, 0)
+tail_recursion(4, 5)
+tail_recursion(3, 9)
+tail_recursion(2, 12)
+tail_recursion(1, 14)
+tail_recursion(0, 15)
+15
+</pre></div>
+
+
+<p>可以看到, 尾递归每一级递归函数的调用变成"线性"的形式. 这时, 我们可以思考, <code>虽然尾递归调用也会创建新的栈, 但是我们可以优化使得尾递归的每一级调用共用一个栈!</code>, 如此便可解决爆栈和递归深度限制的问题! <br/></p>
+<h2>C中尾递归的优化</h2>
+<p>gcc使用<code>-O2</code>参数开启尾递归优化:</p>
+<div class="codehilite"><pre><span></span><span class="kt">int</span> <span class="nf">tail_recursion</span><span class="p">(</span><span class="kt">int</span> <span class="n">n</span><span class="p">,</span> <span class="kt">int</span> <span class="n">total</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">n</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="n">total</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="k">else</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="n">tail_recursion</span><span class="p">(</span><span class="n">n</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">total</span><span class="o">+</span><span class="n">n</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kt">int</span> <span class="n">total</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="n">n</span> <span class="o">=</span> <span class="mi">4</span><span class="p">;</span>
+    <span class="n">tail_recursion</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">total</span><span class="p">);</span>
+    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>反汇编 </p>
+<div class="codehilite"><pre><span></span>$ gcc -S tail_recursion.c -o normal_recursion.S
+$ gcc -S -O2 tail_recursion.c -o tail_recursion.S gcc开启尾递归优化
+</pre></div>
+
+
+<p>对比反汇编代码如下(AT&amp;T语法, 左图为优化后) </p>
+<p><img alt="优化" src="https://cloud.githubusercontent.com/assets/10671733/20724681/24cfaffe-b6aa-11e6-85f8-fee65848f533.png" /></p>
+<p>可以看到, 开启尾递归优化前, 使用call调用函数, 创建了新的调用栈(LBB0_3); 而开启尾递归优化后, 就没有新的调用栈生成了, 而是直接pop bp指向的_tail_recursion函数的地址(pushq %rbp)然后返回,  仍旧用的是同一个调用栈!</p>
+<h2>Python开启尾递归优化</h2>
+<p>cpython本身不支持尾递归优化, 但是一个牛人想出的解决办法：<code>实现一个 tail_call_optimized 装饰器</code></p>
+<div class="codehilite"><pre><span></span><span class="ch">#!/usr/bin/env python2.4</span>
+<span class="c1"># This program shows off a python decorator(</span>
+<span class="c1"># which implements tail call optimization. It</span>
+<span class="c1"># does this by throwing an exception if it is</span>
+<span class="c1"># it&#39;s own grandparent, and catching such</span>
+<span class="c1"># exceptions to recall the stack.</span>
+
+<span class="kn">import</span> <span class="nn">sys</span>
+
+<span class="k">class</span> <span class="nc">TailRecurseException</span><span class="p">:</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">args</span> <span class="o">=</span> <span class="n">args</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">kwargs</span> <span class="o">=</span> <span class="n">kwargs</span>
+
+<span class="k">def</span> <span class="nf">tail_call_optimized</span><span class="p">(</span><span class="n">g</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    This function decorates a function with tail call</span>
+<span class="sd">    optimization. It does this by throwing an exception</span>
+<span class="sd">    if it is it&#39;s own grandparent, and catching such</span>
+<span class="sd">    exceptions to fake the tail call optimization.</span>
+
+<span class="sd">    This function fails if the decorated</span>
+<span class="sd">    function recurses in a non-tail context.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">func</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="n">f</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">_getframe</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">f</span><span class="o">.</span><span class="n">f_back</span> <span class="ow">and</span> <span class="n">f</span><span class="o">.</span><span class="n">f_back</span><span class="o">.</span><span class="n">f_back</span> \
+            <span class="ow">and</span> <span class="n">f</span><span class="o">.</span><span class="n">f_back</span><span class="o">.</span><span class="n">f_back</span><span class="o">.</span><span class="n">f_code</span> <span class="o">==</span> <span class="n">f</span><span class="o">.</span><span class="n">f_code</span><span class="p">:</span>
+            <span class="c1"># 抛出异常</span>
+            <span class="k">raise</span> <span class="n">TailRecurseException</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">while</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="n">g</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+                <span class="k">except</span> <span class="n">TailRecurseException</span><span class="p">,</span> <span class="n">e</span><span class="p">:</span>
+                    <span class="n">args</span> <span class="o">=</span> <span class="n">e</span><span class="o">.</span><span class="n">args</span>
+                    <span class="n">kwargs</span> <span class="o">=</span> <span class="n">e</span><span class="o">.</span><span class="n">kwargs</span>
+    <span class="n">func</span><span class="o">.</span><span class="vm">__doc__</span> <span class="o">=</span> <span class="n">g</span><span class="o">.</span><span class="vm">__doc__</span>
+    <span class="k">return</span> <span class="n">func</span>
+
+<span class="nd">@tail_call_optimized</span>
+<span class="k">def</span> <span class="nf">factorial</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">acc</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+    <span class="s2">&quot;calculate a factorial&quot;</span>
+    <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">acc</span>
+    <span class="k">return</span> <span class="n">factorial</span><span class="p">(</span><span class="n">n</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">n</span><span class="o">*</span><span class="n">acc</span><span class="p">)</span>
+
+<span class="k">print</span> <span class="n">factorial</span><span class="p">(</span><span class="mi">10000</span><span class="p">)</span> 
+</pre></div>
+
+
+<p>这里解释一下<code>sys._getframe()</code>函数:</p>
+<blockquote>
+<p>sys._getframe([depth]):
+Return a frame object from the call stack.
+If optional integer depth is given, return the frame object that many calls below the top of the stack.
+If that is deeper than the call stack, ValueEfror is raised. The default for depth is zero,
+returning the frame at the top of the call stack.</p>
+</blockquote>
+<p>即返回depth深度调用的栈帧对象. <br/></p>
+<div class="codehilite"><pre><span></span><span class="kn">import</span> <span class="nn">sys</span>
+
+<span class="k">def</span> <span class="nf">get_cur_info</span><span class="p">():</span>
+    <span class="k">print</span> <span class="n">sys</span><span class="o">.</span><span class="n">_getframe</span><span class="p">()</span><span class="o">.</span><span class="n">f_code</span><span class="o">.</span><span class="n">co_filename</span>  <span class="c1"># 当前文件名</span>
+    <span class="k">print</span> <span class="n">sys</span><span class="o">.</span><span class="n">_getframe</span><span class="p">()</span><span class="o">.</span><span class="n">f_code</span><span class="o">.</span><span class="n">co_name</span>  <span class="c1"># 当前函数名</span>
+    <span class="k">print</span> <span class="n">sys</span><span class="o">.</span><span class="n">_getframe</span><span class="p">()</span><span class="o">.</span><span class="n">f_lineno</span> <span class="c1"># 当前行号</span>
+    <span class="k">print</span> <span class="n">sys</span><span class="o">.</span><span class="n">_getframe</span><span class="p">()</span><span class="o">.</span><span class="n">f_back</span> <span class="c1"># 调用者的帧</span>
+</pre></div>
+
+
+<p>更多关于<code>sys._getframe的使用</code>请看<a href="http://feihonghsu.com/secrets/framehack/index.html#crazy-monkey-patching-lxml">Frame Hacks</a> <br/>
+说一下<code>tail_call_optimized实现尾递归优化的原理</code>: 当递归函数被该装饰器修饰后, 递归调用在装饰器while循环内部进行, 每当产生新的递归调用栈帧时: <code>f.f_back.f_back.f_code == f.f_code:</code>, 就捕获当前尾调用函数的参数, 并抛出异常, 从而销毁递归栈并使用捕获的参数手动调用递归函数. 所以递归的过程中始终只存在一个栈帧对象, 达到优化的目的.<br/>
+为了更清晰的展示开启尾递归优化前、后调用栈的变化和tail_call_optimized装饰器抛异常退出递归调用栈的作用, 我这里利用pudb调试工具做了动图: <br/></p>
+<p>开启尾递归优化前的调用栈 
+<img alt="" src="https://cloud.githubusercontent.com/assets/10671733/20725973/b4e5d060-b6ae-11e6-9116-265cdd871b36.gif" /></p>
+<p>开启尾递归优化后(tail_call_optimized装饰器)的调用栈 
+<img alt="" src="https://cloud.githubusercontent.com/assets/10671733/20726110/1cfc8568-b6af-11e6-9817-1257b4c482f1.gif" /></p>
+<p>通过pudb右边栏的stack, 可以很清晰的看到调用栈的变化. <br/>
+因为实现了尾递归优化, 所以factorial(10000)都不害怕递归深度限制报错啦! <br/></p>
+        </div>
+<div id="bootpre">
+    <script>
+        var x = document.getElementsByClassName("codehilite");
+        for (var i = 0; i < x.length; i++)
+        {
+            x[i].childNodes[0].className = "border border-danger";
+        }
+    </script>
+</div>
+<div id="h1center">
+    <script>
+        var x = document.getElementsByTagName("h1")[0].style="text-align:center";
+    </script>
+</div>
+<div id="_blank">
+    <script>
+        var as = document.getElementsByTagName('a');
+        // alert(as[1]);
+        for (var i = 1; i < as.length; i++) {
+            // as[i].style="target: _blank";
+            as[i].setAttribute('target', '_blank');
+        }
+    </script>
+</div>
+<div id="disqus_thread"></div>
+<script>
+/**
+*  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+*  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables*/
+/*
+var disqus_config = function () {
+this.page.url = PAGE_URL;  // Replace PAGE_URL with your page's canonical URL variable
+this.page.identifier = PAGE_IDENTIFIER; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+};
+*/
+(function() { // DON'T EDIT BELOW THIS LINE
+var d = document, s = d.createElement('script');
+s.src = 'https://neo1218flask.disqus.com/embed.js';
+s.setAttribute('data-timestamp', +new Date());
+(d.head || d.body).appendChild(s);
+})();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    </body>
+</html>

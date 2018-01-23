@@ -4,7 +4,7 @@
         <link href="https://cdn.bootcss.com/bootstrap/4.0.0-beta.2/css/bootstrap.min.css" rel="stylesheet" />
         <link href=/static/css/main.css rel="stylesheet" type="text/css">
         <link rel="stylesheet" href="/pygments.css">
-        <title>libuv源码分析(系列)</title>
+        <title>libco源码阅读(系列)</title>
     </head>
     <body class='main page'>
         <div class="" style="text-align:center; position:relative;">
@@ -13,28 +13,27 @@
         </div>
         <hr>
         <div class="container">
-            <h1>libuv源码分析(系列)</h1>
-<hr>
-
-<p>本系列博客将从两个方面对libuv的源码进行解读:</p>
-<ol>
-<li>libuv的实现</li>
-<li>libuv源码中的技巧</li>
-</ol>
-<p><code>libuv的实现</code>更注重代码的逻辑，可能会忽略一些繁杂的代码细节，目的在于将关注点放在功能的实现上；而那些繁杂但有趣的代码则在<code>libuv源码中的技巧</code>做具体分析.</p>
-<h2>为什么要分析libuv呢?</h2>
-<p>作为一名Unix+<a href="https://github.com/ry/">Ryan Dahl</a>的狂热粉, 两者间的交集libuv自然是我必须关注的对象. <br>
-此外，从大二开始我就有一个执念--用C写Web. 或许，X年以后，我可以基于libuv实现一个C Web框架:)</p>
-<p><img alt="ry" src="https://www.mappingthejourney.com/wp-content/uploads/2017/08/Ryan.png" /></p>
-<h2>目录</h2>
-<h3>libuv的实现</h3>
-<h3>libuv源码中的技巧</h3>
+            <h1>libco源码阅读系列</h1>
+<p><br/></p>
+<h2>libco介绍</h2>
+<p>libco是微信后端使用的协程库, 用C/C++编写, 具有以下特性:</p>
 <ul>
-<li><a href="http://www.misakar.me/libuv1/"><strong><code>队列结构的完全[宏]实现</code></strong></a></li>
+<li>pthread风格的coroutine接口封装</li>
+<li>事件循环以及超时机制</li>
+<li>基于glibc-2.17源码修改的一个swapcontext高性能汇编版本</li>
+<li>socket函数的coroutine hook，阻塞式的socket调用会直接切换为异步调用</li>
 </ul>
-<hr/>
-
-<h2>实战: 使用libuv和http-parser编写一个chat server</h2>
+<p>关于libco的起源由来等更多信息, 参见<a href="http://www.infoq.com/cn/articles/CplusStyleCorourtine-At-Wechat">这篇报道</a></p>
+<h2>libco架构</h2>
+<p><img alt="libco" src="https://res.infoq.com/articles/CplusStyleCorourtine-At-Wechat/zh/resources/20.png" /></p>
+<ul>
+<li><a href="http://www.misakar.me/coroutine_in_c/">用C实现协程</a></li>
+</ul>
+<h2>目录</h2>
+<p><img alt="干死理事长" src="https://gss0.baidu.com/9fo3dSag_xI4khGko9WTAnF6hhy/zhidao/wh%3D600%2C800/sign=0dcb6e890b55b3199cac8a737399ae1e/241f95cad1c8a7866b1f68866609c93d70cf5004.jpg" /></p>
+<ul>
+<li><a href="http://www.misakar.me/libco_share_stack/"><strong><code>libco共享栈的实现</code></strong></a></li>
+</ul>
         </div>
 <div id="bootpre">
     <script>
