@@ -18,7 +18,7 @@
 
 <h2>0. 什么是OAuth</h2>
 <p>OAuth是一个处理<code>用户数据访问授权</code>的开放标准, 相比于传统的用户名密码登录授权机制, OAuth流程限制用户的密码在网络上传播, 保证了用户的访问安全.<br/>
-目前谷歌、亚马逊等大公司都使用了OAuth标准: <a href="https://developers.google.com/identity/protocols/OAuth2">谷歌OAuth授权文档</a>. <br/>
+目前谷歌、亚马逊等公司都使用了OAuth标准: <a href="https://developers.google.com/identity/protocols/OAuth2">谷歌OAuth授权文档</a>. <br/>
 OAuth标准由<a href="https://datatracker.ietf.org/doc/rfc6749/">RFC6749</a>描述. </p>
 <h3>OAuth1.0 VS OAuth2.0</h3>
 <p>OAuth2.0相比于OAuth1.0在以下方面做出了改进:<br/>
@@ -27,7 +27,7 @@ OAuth1.0时期https还没有普及, OAuth1.0为了保证验证数据不被中间
 <strong><code>更好的用户体验</code></strong><br/>
 OAuth1.0对手机、桌面原生应用的支持不太好, 而OAuth2.0支持更灵活的Redirect URI注册(下面会具体介绍), 提供了更好的原生应用体验. <br/>
 <strong><code>高并发支持</code></strong><br/>
-OAuth2.0将授权流程和使用token请求API完全隔离(两者间没有任何参数需要传递), 这非常适合一些将授权和业务放在不同服务器上的后端场景, 验证服务器和业务服务器可以完全按照各自的访问量做扩容.
+OAuth2.0将授权流程和使用token请求API完全隔离(两者间没有任何参数需要传递), 这非常适合一些将授权和业务放在不同服务器上的后端场景, 验证服务器和业务服务器分离, 使得各部分可以完全按照各自的访问量做扩容.
 <hr/>
 接下来的介绍都将使用OAuth2.0.</p>
 <h2>1. OAuth2.0验证流程</h2>
@@ -37,8 +37,22 @@ OAuth2.0将授权流程和使用token请求API完全隔离(两者间没有任何
 <li><code>应用请求授权码</code></li>
 <li><code>应用请求token</code></li>
 </ol>
-<p>不同的应用类型在参数上会有细微的不同, 下面做具体介绍.(困得不行了, 睡觉吧...)</p>
+<p>不同的应用类型在参数上会有细微的不同, 下面做具体介绍.(~~困得不行了, 睡觉吧...~~)</p>
 <h3>Server Side APP</h3>
+<p>Server Side APP的源码一般不会被外界获取(当然github托管就...), 所以客户端请求token时, OAuth推荐附上``client secret```参数:</p>
+<div class="codehilite"><pre><span></span>https://authorization-server.com/auth?response_type=code&amp;
+  client_id=CLIENT_ID&amp;redirect_uri=REDIRECT_URI&amp;scope=photos&amp;state=1234zyx
+</pre></div>
+
+
+<p>各个参数解释如下:</p>
+<ul>
+<li><code>response_type</code>: 授权请求的类型, code表示授权码类型</li>
+<li><code>client_id</code>: 客户端id</li>
+<li><code>redirect_uri</code>: 客户端注册的重定向URI</li>
+<li><code>scope</code>: </li>
+<li><code>state</code>:</li>
+</ul>
 <h3>Single Page APP</h3>
 <h3>Mobile Native APP</h3>
 <p><strong>App-Claimed https URL Redirection</strong><br/></p>
