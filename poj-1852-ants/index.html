@@ -1,0 +1,144 @@
+<html>
+    <head>
+        <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+        <link href="https://cdn.bootcss.com/bootstrap/4.0.0-beta.2/css/bootstrap.min.css" rel="stylesheet" />
+        <link href=/static/css/main.css rel="stylesheet" type="text/css">
+        <link rel="stylesheet" href="/pygments.css">
+        <title>(POJ1852)Ants</title>
+    </head>
+    <body class='main page'>
+        <div class="" style="text-align:center; position:relative;">
+            <img src=/static/img/misakar2.jpg width = "180px" height="180px"></img>
+            <a class="navbar-brand border border-info" href="http://www.misakar.me" style="margin-left:50px">Misaka.r.Me</a>
+        </div>
+        <hr>
+        <div class="container">
+            <h1>(POJ1852)Ants</h1>
+<hr/>
+
+<h2>题目描述</h2>
+<div class="codehilite"><pre><span></span>n只蚂蚁以每秒1cm的速度在长为Lcm的竿子上爬行. 当蚂蚁爬到竿子的端点时就会掉落.
+由于竿子太细, 两只蚂蚁相遇时, 它们不能交错通过, 只能各自反向爬回去.
+对于每只蚂蚁, 我们知道它距离竿子左端的距离xi, 但不知道它当前的朝向.
+请计算所有蚂蚁落下竿子的最短时间和最长时间.
+</pre></div>
+
+
+<h2>限制条件</h2>
+<ul>
+<li><code>1 =&lt; L &lt;= 10^6</code></li>
+<li><code>1 =&lt; n &lt;= 10^6</code></li>
+<li><code>0 =&lt; xi &lt;= L</code></li>
+</ul>
+<h2>输入</h2>
+<p>第一行, 按空格分隔, 分别对应n、L;
+随后n行输入n只蚂蚁距离竿子左端的距离</p>
+<h2>输出</h2>
+<p>输出一行, 分别为最短时间和最长时间，按空格分隔</p>
+<h2>样例</h2>
+<p><strong><code>输入</code></strong><br/></p>
+<div class="codehilite"><pre><span></span>3 10
+2
+6
+7
+</pre></div>
+
+
+<p><strong><code>输出</code></strong> <br/></p>
+<div class="codehilite"><pre><span></span>4 8
+</pre></div>
+
+
+<hr/>
+
+<h2>思路</h2>
+<p>把蚂蚁抽象为<code>1cm/s的质点</code>, 当<code>两个相同的质点相遇并原路返回等价于这两个质点相遇并继续向相同方向前进</code>. </p>
+<h2>代码</h2>
+<div class="codehilite"><pre><span></span><span class="cp">#include</span> <span class="cpf">&lt;stdio.h&gt;</span><span class="cp"></span>
+<span class="cp">#include</span> <span class="cpf">&lt;stdlib.h&gt;</span><span class="cp"></span>
+
+<span class="kt">int</span> <span class="nf">int_cmp</span><span class="p">(</span><span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="k">const</span> <span class="kt">void</span> <span class="o">*</span><span class="n">b</span><span class="p">)</span> 
+<span class="p">{</span> 
+    <span class="k">const</span> <span class="kt">int</span> <span class="o">*</span><span class="n">ia</span> <span class="o">=</span> <span class="p">(</span><span class="k">const</span> <span class="kt">int</span> <span class="o">*</span><span class="p">)</span><span class="n">a</span><span class="p">;</span> <span class="c1">// casting pointer types </span>
+    <span class="k">const</span> <span class="kt">int</span> <span class="o">*</span><span class="n">ib</span> <span class="o">=</span> <span class="p">(</span><span class="k">const</span> <span class="kt">int</span> <span class="o">*</span><span class="p">)</span><span class="n">b</span><span class="p">;</span>
+    <span class="k">return</span> <span class="o">*</span><span class="n">ia</span>  <span class="o">-</span> <span class="o">*</span><span class="n">ib</span><span class="p">;</span> 
+<span class="p">}</span>
+
+<span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span><span class="o">**</span> <span class="n">argv</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kt">int</span> <span class="n">n</span><span class="p">,</span> <span class="n">L</span><span class="p">,</span> <span class="n">cnt</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">;</span>
+
+    <span class="n">scanf</span><span class="p">(</span><span class="s">&quot;%d %d&quot;</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">n</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">L</span><span class="p">);</span>
+    <span class="n">cnt</span> <span class="o">=</span> <span class="n">n</span><span class="p">;</span>
+    <span class="kt">int</span><span class="o">*</span> <span class="n">x_max</span> <span class="o">=</span> <span class="n">malloc</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="kt">int</span><span class="p">)</span><span class="o">*</span><span class="n">n</span><span class="p">);</span>
+    <span class="kt">int</span><span class="o">*</span> <span class="n">x_min</span> <span class="o">=</span> <span class="n">malloc</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="kt">int</span><span class="p">)</span><span class="o">*</span><span class="n">n</span><span class="p">);</span>
+    <span class="k">while</span> <span class="p">(</span><span class="n">cnt</span><span class="o">--</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">scanf</span><span class="p">(</span><span class="s">&quot;%d&quot;</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">j</span><span class="p">);</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">j</span> <span class="o">&lt;</span> <span class="n">L</span><span class="o">/</span><span class="mi">2</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">x_max</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">L</span><span class="o">-</span><span class="n">j</span><span class="p">;</span> <span class="c1">// -&gt;</span>
+            <span class="n">x_min</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">j</span><span class="p">;</span>   <span class="c1">// &lt;-</span>
+
+        <span class="p">}</span>
+        <span class="k">else</span> <span class="p">{</span>
+            <span class="n">x_max</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">j</span><span class="p">;</span>   <span class="c1">// &lt;-</span>
+            <span class="n">x_min</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">L</span><span class="o">-</span><span class="n">j</span><span class="p">;</span> <span class="c1">// -&gt;</span>
+        <span class="p">}</span>
+        <span class="n">i</span><span class="o">++</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="n">qsort</span><span class="p">(</span><span class="n">x_max</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">int</span><span class="p">),</span> <span class="n">int_cmp</span><span class="p">);</span>
+    <span class="n">qsort</span><span class="p">(</span><span class="n">x_min</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">int</span><span class="p">),</span> <span class="n">int_cmp</span><span class="p">);</span>
+
+    <span class="n">printf</span><span class="p">(</span><span class="s">&quot;%d &quot;</span><span class="p">,</span> <span class="n">x_min</span><span class="p">[</span><span class="n">n</span><span class="o">-</span><span class="mi">1</span><span class="p">]);</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">&quot;%d</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">x_max</span><span class="p">[</span><span class="n">n</span><span class="o">-</span><span class="mi">1</span><span class="p">]);</span>
+
+    <span class="n">free</span><span class="p">(</span><span class="n">x_min</span><span class="p">);</span>
+    <span class="n">free</span><span class="p">(</span><span class="n">x_max</span><span class="p">);</span>
+    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+        </div>
+<div id="bootpre">
+    <script>
+        var x = document.getElementsByClassName("codehilite");
+        for (var i = 0; i < x.length; i++)
+        {
+            x[i].childNodes[0].className = "border border-danger";
+        }
+    </script>
+</div>
+<div id="h1center">
+    <script>
+        var x = document.getElementsByTagName("h1")[0].style="text-align:center";
+    </script>
+</div>
+<div id="_blank">
+    <script>
+        var as = document.getElementsByTagName('a');
+        // alert(as[1]);
+        for (var i = 1; i < as.length; i++) {
+            // as[i].style="target: _blank";
+            as[i].setAttribute('target', '_blank');
+        }
+    </script>
+</div>
+<div id="disqus_thread"></div>
+<script>
+/**
+*  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+*  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables*/
+/*
+var disqus_config = function () {
+this.page.url = PAGE_URL;  // Replace PAGE_URL with your page's canonical URL variable
+this.page.identifier = PAGE_IDENTIFIER; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+};
+*/
+(function() { // DON'T EDIT BELOW THIS LINE
+var d = document, s = d.createElement('script');
+s.src = 'https://neo1218flask.disqus.com/embed.js';
+s.setAttribute('data-timestamp', +new Date());
+(d.head || d.body).appendChild(s);
+})();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    </body>
+</html>

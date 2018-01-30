@@ -246,7 +246,7 @@ consume <span class="m">2</span>
 </pre></div>
 
 
-<p>这段代码相比于前两版要复杂, 主要在于跳转的实现. 需要注意的是, 这个协程其实是"伪协程",因为代码并没有实现整个协程栈的保存, 只是把关键的productor栈中的i设置为了static :) <br/>
+<p>这段代码相比于前两版要复杂, 主要在于跳转的实现. 需要注意的是, 这个协程其实是<strong><code>stackless coroutine</code></strong>,因为代码并没有实现整个协程栈的保存, 只是把关键的productor栈中的i设置为了static :) <br/>
 运行一下:</p>
 <div class="codehilite"><pre><span></span>$ gcc co_in_c.c <span class="o">&amp;&amp;</span> ./a.out
 produce <span class="m">0</span>
