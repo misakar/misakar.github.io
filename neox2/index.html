@@ -51,11 +51,186 @@ CPU在实模式下地址总线20位, 最多可访问:<code>2^20Byte = 1MB</code>
 <img alt="bootable" src="https://user-images.githubusercontent.com/10671733/35511510-2af3bf24-0537-11e8-927a-ef57826e6fd4.png" />
 要想知道报错的原因, 就需要知道BIOS是如何加载可启动设备的(bootable device, 如硬盘、U盘等).<br/>
 BIOS会检查配置顺序中的第一个启动设备上的<code>第一个扇区</code>, 这个扇区也被称为主引导扇区, 主引导扇区上的512字节程序就是Master Boot Record(MBR). 因为此时bochs的虚拟硬盘(默认配置bochs从硬盘启动)还没有写入MBR程序, 所以这里就报错了. <br/>
-BIOS检查0盘0道1扇区最后两个字节是不是0xaa55(魔数), 若是, 证明是有效的MBR程序, <a href="http://www.ruanyifeng.com/blog/2015/09/0x7c00.html">便将MBR加载到内存的<code>0x7c00</code>处</a>. <br/>
+BIOS会检查0盘0道1扇区最后两个字节是不是0xaa55(魔数), 若是, 证明是有效的MBR程序, <a href="http://www.ruanyifeng.com/blog/2015/09/0x7c00.html">便将MBR加载到内存的<code>0x7c00</code>处</a>. <br/>
 下面来具体分析MBR的作用: <br/></p>
-<h2>为什么不把引导功能集成到BIOS中?</h2>
+<div class="codehilite"><pre><span></span><span class="c">;---------------------------------------------------------------------------</span>
+<span class="c">; UIHARU::MBR E bootloader (512字节)</span>
+<span class="c">;---------------------------------------------------------------------------</span>
+<span class="err">%</span><span class="nf">include</span> <span class="err">&quot;</span><span class="no">boot.inc</span><span class="err">&quot;</span>
+<span class="nf">SECTION</span> <span class="no">MBR</span> <span class="no">vstart</span><span class="err">=</span><span class="mi">0x7c00</span> <span class="c">; bios把mbr加载到0x7c00处~31KB</span>
+</pre></div>
+
+
+<p>首先MBR要给各个寄存器合适的值</p>
+<div class="codehilite"><pre><span></span><span class="nf">mov</span> <span class="no">ax</span><span class="p">,</span> <span class="no">cs</span>     <span class="c">; code segment: cs寄存器CPU启动的时候就初始化过了0xf000;</span>
+<span class="no">mov</span> <span class="no">ds</span><span class="p">,</span> <span class="no">ax</span>     <span class="c">; generally points at segment where variables are defined;</span>
+<span class="no">mov</span> <span class="no">es</span><span class="p">,</span> <span class="no">ax</span>     <span class="c">; extra segment register, it&#39;s up to a coder to define its usage;</span>
+<span class="no">mov</span> <span class="no">fs</span><span class="p">,</span> <span class="no">ax</span>     <span class="c">; fs,gs are commonly used by OS kernels to access thread-specific memory;</span>
+<span class="no">mov</span> <span class="no">ss</span><span class="p">,</span> <span class="no">ax</span>     <span class="c">; stack segment register: 把整个实模式下0~0x7c00内存看作一个大栈;</span>
+<span class="no">mov</span> <span class="no">sp</span><span class="p">,</span> <span class="mi">0x7c00</span> <span class="c">; 栈指针寄存器指向0x7c00;</span>
+<span class="no">mov</span> <span class="no">ax</span><span class="p">,</span> <span class="mi">0xb800</span> <span class="c">; 显卡寄存器地址0xb8000, 实模式寻址会左移4位, 所以值为0xb800;</span>
+<span class="no">mov</span> <span class="no">gs</span><span class="p">,</span> <span class="no">ax</span>     <span class="c">; gs显卡基址, 通过gs可以操作显卡;</span>
+</pre></div>
+
+
+<p>因为bochs输出了大量信息, 所以我们要先清屏. 清屏操作是利用<strong><code>0x10中断</code></strong>实现的.</p>
+<div class="codehilite"><pre><span></span><span class="c">;---------------------------------------------------------------------------</span>
+<span class="c">; 清屏操作</span>
+<span class="c">; INT 0x10  功能号: 0x06  功能描述: 上卷窗口</span>
+<span class="c">;---------------------------------------------------------------------------</span>
+<span class="nf">mov</span> <span class="no">ax</span><span class="p">,</span> <span class="mi">0600</span><span class="no">h</span>  <span class="c">; bios 0x10中断第0x600号功能</span>
+<span class="no">mov</span> <span class="no">cx</span><span class="p">,</span> <span class="mi">0</span>      <span class="c">; 左上角: (0, 0)</span>
+<span class="no">mov</span> <span class="no">dx</span><span class="p">,</span> <span class="mi">0x184f</span> <span class="c">; VGA[文本模式]中, 一行容纳80个字符, 共25行</span>
+               <span class="c">; 下标从0开始, 0x18=24, 0x4f=79</span>
+               <span class="c">; 由于x86CPU是[小端模式] -&gt; 0x184f</span>
+               <span class="c">; 左上-&gt;右下: clear screen</span>
+<span class="no">int</span> <span class="mi">0x10</span>       <span class="c">; INT 0x10</span>
+</pre></div>
+
+
+<p>接下来我希望输出文字表示MBR已被加载, 输出功能可以通过直接把要输出的字节放到显存上实现, 显卡基址已被放到了gs寄存器中:</p>
+<div class="codehilite"><pre><span></span><span class="c">;---------------------------------------------------------------------------</span>
+<span class="c">; 操作显卡输出字符</span>
+<span class="c">; PRINT BG-COLOR GREEN, FR-COLOR RED, FLASH STRING &quot;misaka&quot;</span>
+<span class="c">;---------------------------------------------------------------------------</span>
+<span class="nf">mov</span> <span class="no">byte</span> <span class="p">[</span><span class="no">gs</span><span class="p">:</span><span class="mi">0x00</span><span class="p">],</span> <span class="err">&#39;</span><span class="no">m</span><span class="err">&#39;</span>
+<span class="nf">mov</span> <span class="no">byte</span> <span class="p">[</span><span class="no">gs</span><span class="p">:</span><span class="mi">0x01</span><span class="p">],</span> <span class="mi">0xA4</span>
+
+<span class="nf">mov</span> <span class="no">byte</span> <span class="p">[</span><span class="no">gs</span><span class="p">:</span><span class="mi">0x02</span><span class="p">],</span> <span class="err">&#39;</span><span class="no">i</span><span class="err">&#39;</span>
+<span class="nf">mov</span> <span class="no">byte</span> <span class="p">[</span><span class="no">gs</span><span class="p">:</span><span class="mi">0x03</span><span class="p">],</span> <span class="mi">0xA4</span>
+
+<span class="nf">mov</span> <span class="no">byte</span> <span class="p">[</span><span class="no">gs</span><span class="p">:</span><span class="mi">0x04</span><span class="p">],</span> <span class="err">&#39;</span><span class="no">s</span><span class="err">&#39;</span>
+<span class="nf">mov</span> <span class="no">byte</span> <span class="p">[</span><span class="no">gs</span><span class="p">:</span><span class="mi">0x05</span><span class="p">],</span> <span class="mi">0xA4</span>
+
+<span class="nf">mov</span> <span class="no">byte</span> <span class="p">[</span><span class="no">gs</span><span class="p">:</span><span class="mi">0x06</span><span class="p">],</span> <span class="err">&#39;</span><span class="no">a</span><span class="err">&#39;</span>
+<span class="nf">mov</span> <span class="no">byte</span> <span class="p">[</span><span class="no">gs</span><span class="p">:</span><span class="mi">0x07</span><span class="p">],</span> <span class="mi">0xA4</span>
+
+<span class="nf">mov</span> <span class="no">byte</span> <span class="p">[</span><span class="no">gs</span><span class="p">:</span><span class="mi">0x08</span><span class="p">],</span> <span class="err">&#39;</span><span class="no">k</span><span class="err">&#39;</span>
+<span class="nf">mov</span> <span class="no">byte</span> <span class="p">[</span><span class="no">gs</span><span class="p">:</span><span class="mi">0x09</span><span class="p">],</span> <span class="mi">0xA4</span>
+</pre></div>
+
+
+<p>最后别忘了写入魔数哦!</p>
+<div class="codehilite"><pre><span></span><span class="nf">times</span> <span class="p">(</span><span class="mi">512</span><span class="p">-</span><span class="mi">2</span><span class="p">)-(</span><span class="no">$-$$</span><span class="p">)</span> <span class="no">db</span> <span class="mi">0</span> <span class="c">; 填充0, 保证第一个扇区510字节</span>
+<span class="no">db</span> <span class="mi">0x55</span><span class="p">,</span> <span class="mi">0xaa</span>       <span class="c">; db:(define byte), 最后2位0xaa55</span>
+</pre></div>
+
+
+<p>OK! 让我们把上述MBR程序写入硬盘</p>
+<div class="codehilite"><pre><span></span><span class="c1"># 编译汇编程序</span>
+$ nasm -I include/ -o mbr.bin mbr.S
+$ dd <span class="k">if</span><span class="o">=</span>./mbr.bin <span class="nv">of</span><span class="o">=</span>/path/to/bochs/hd60MB.img <span class="nv">bs</span><span class="o">=</span><span class="m">512</span> <span class="nv">count</span><span class="o">=</span><span class="m">1</span> <span class="nv">conv</span><span class="o">=</span>notrunc
+</pre></div>
+
+
+<p>然后启动bochs:</p>
+<p><img alt="bochs-mbr" src="https://user-images.githubusercontent.com/10671733/35553590-82118330-05d3-11e8-84a4-3729e6843a04.png" /></p>
+<p>MBR程序被成功加载! 不过目前我们的Boot程序也就悬停在这了. <br/>
+MBR被称为主引导记录, 可见它的关键作用在于引导操作系统内核进入内存. 将内核加载到内存的功能由Loader程序完成, MBR所要做的就是在硬盘上找到Loader程序并把Loader程序放入内存, 以便启动加载OS内核的程序. 完成这部分功能就需要读硬盘:</p>
+<div class="codehilite"><pre><span></span><span class="c">;---------------------------------------------------------------------------</span>
+<span class="c">; 函数: rd_disk_m_16</span>
+<span class="c">; -&gt; 功能: 读取硬盘的n个扇区</span>
+<span class="c">; --&gt; eax: 加载器的LBA扇区号</span>
+<span class="c">; --&gt; bx:  将数据写入的内存地址</span>
+<span class="c">; --&gt; cx:  读入的扇区数</span>
+<span class="c">;---------------------------------------------------------------------------</span>
+<span class="nl">rd_disk_m_16:</span>
+    <span class="nf">mov</span> <span class="no">esi</span><span class="p">,</span> <span class="no">eax</span>    <span class="c">; 备份eax</span>
+    <span class="no">mov</span> <span class="no">di</span><span class="p">,</span> <span class="no">cx</span>      <span class="c">; 备份cx</span>
+<span class="c">; 读写硬盘:</span>
+<span class="c">; step1-&gt;设置要读取的扇区数</span>
+    <span class="no">mov</span> <span class="no">dx</span><span class="p">,</span> <span class="mi">0x1f2</span>   <span class="c">; 0x1f2: primary通道, sector count寄存器</span>
+    <span class="no">mov</span> <span class="no">al</span><span class="p">,</span> <span class="no">cl</span>      <span class="c">; cl: the least significant 8 bits of the cx</span>
+    <span class="no">out</span> <span class="no">dx</span><span class="p">,</span> <span class="no">al</span>      <span class="c">; 读取的扇区数</span>
+
+    <span class="nf">mov</span> <span class="no">eax</span><span class="p">,</span> <span class="no">esi</span>    <span class="c">; 恢复eax</span>
+<span class="c">; step2-&gt;set lba address</span>
+    <span class="c">;lbalow 7~0</span>
+    <span class="no">mov</span> <span class="no">dx</span><span class="p">,</span> <span class="mi">0x1f3</span>
+    <span class="nf">out</span> <span class="no">dx</span><span class="p">,</span> <span class="no">al</span>      <span class="c">; 写入lbalow寄存器</span>
+
+    <span class="c">;lbamid 15-8</span>
+    <span class="nf">mov</span> <span class="no">cl</span><span class="p">,</span> <span class="mi">8</span>
+    <span class="nf">shr</span> <span class="no">eax</span><span class="p">,</span> <span class="no">cl</span>     <span class="c">; 扇区起始地址shr(右移8位)</span>
+    <span class="no">mov</span> <span class="no">dx</span><span class="p">,</span> <span class="mi">0x1f4</span>
+    <span class="nf">out</span> <span class="no">dx</span><span class="p">,</span> <span class="no">al</span>
+
+    <span class="c">;lbahigh 23-16</span>
+    <span class="nf">shr</span> <span class="no">eax</span><span class="p">,</span> <span class="no">cl</span>
+    <span class="nf">mov</span> <span class="no">dx</span><span class="p">,</span> <span class="mi">0x1f5</span>
+    <span class="nf">out</span> <span class="no">dx</span><span class="p">,</span> <span class="no">al</span>
+<span class="c">; step3-&gt;set device register</span>
+    <span class="c">;lba device</span>
+    <span class="nf">shr</span> <span class="no">eax</span><span class="p">,</span> <span class="no">cl</span>
+    <span class="nf">or</span> <span class="no">al</span><span class="p">,</span> <span class="mi">0xe0</span>     <span class="c">; lba(23~27)写入device低4位, 高4位1111, 设置主盘、lab寻址</span>
+    <span class="no">mov</span> <span class="no">dx</span><span class="p">,</span> <span class="mi">0x1f6</span>   <span class="c">; device寄存器的低4位</span>
+    <span class="no">out</span> <span class="no">dx</span><span class="p">,</span> <span class="no">al</span>
+
+    <span class="nf">mov</span> <span class="no">dx</span><span class="p">,</span> <span class="mi">0x1f7</span>   <span class="c">; 初始化状态寄存器~</span>
+    <span class="no">mov</span> <span class="no">al</span><span class="p">,</span> <span class="mi">0x20</span>    <span class="c">; 0010 0000~ DRDY: 设备就绪等待指令</span>
+    <span class="no">out</span> <span class="no">dx</span><span class="p">,</span> <span class="no">al</span>      <span class="c">; 写操作时状态寄存器&quot;变成&quot;command寄存器, 硬盘开始工作</span>
+<span class="c">; step4-&gt;read data</span>
+<span class="c">; 检测硬盘状态: BSY位</span>
+  <span class="no">.not_ready</span><span class="p">:</span>
+    <span class="nf">nop</span>             <span class="c">; 空操作, 类似sleep</span>
+    <span class="no">in</span> <span class="no">al</span><span class="p">,</span> <span class="no">dx</span>       <span class="c">; 读取状态寄存器(无需重新初始化dx寄存器)</span>
+    <span class="no">and</span> <span class="no">al</span><span class="p">,</span> <span class="mi">0x88</span>    <span class="c">; 10001000 检测BSY和DRQ</span>
+    <span class="no">cmp</span> <span class="no">al</span><span class="p">,</span> <span class="mi">0x08</span>    <span class="c">; 00001000 检测BSY位</span>
+    <span class="no">jnz</span> <span class="no">.not_ready</span>  <span class="c">; 判断结果是否为0, 得出此时的硬盘工作状态</span>
+                    <span class="c">; jnz判断eflags寄存器的ZF位,如果结果为不为0,执行.not_ready</span>
+                    <span class="c">; 如果结果为0, 说明BSY位为0, 硬盘当前空闲, 执行下面的读操作</span>
+
+<span class="c">; 从0x1f0端口(primary通道的data寄存器)读数据</span>
+    <span class="nf">mov</span> <span class="no">ax</span><span class="p">,</span> <span class="no">di</span>      <span class="c">; di&lt;-cx&lt;-待读入的扇区数</span>
+    <span class="no">mov</span> <span class="no">dx</span><span class="p">,</span> <span class="mi">256</span>     <span class="c">; (512)/2&lt;-一次in读取2个字节: 每个扇区in操作的次数</span>
+    <span class="no">mul</span> <span class="no">dx</span>          <span class="c">; 乘法操作, dx是操作数, 另一个操作数隐含在ax或al寄存器中</span>
+                    <span class="c">; -&gt; [待读入的扇区数*每个扇区in操作的次数] = 4*256 = 1024</span>
+                    <span class="c">; -&gt; 16位乘法32位乘积的低16位在ax寄存器, 高16位在dx寄存器</span>
+    <span class="no">mov</span> <span class="no">cx</span><span class="p">,</span> <span class="no">ax</span>      <span class="c">; cx作为loop循环计数</span>
+                    <span class="c">; -&gt; ax: 1024, 1024次循环,每次2个字节,正好2048-&gt;4个扇区,能够完全读取loader</span>
+
+    <span class="nf">mov</span> <span class="no">dx</span><span class="p">,</span> <span class="mi">0x1f0</span>   <span class="c">; 访问0x1f0寄存器读取数据</span>
+
+  <span class="nl">.go_on_read:</span>
+    <span class="nf">in</span> <span class="no">ax</span><span class="p">,</span> <span class="no">dx</span>       <span class="c">; 从Primary通道主盘读数据</span>
+    <span class="no">mov</span> <span class="p">[</span><span class="no">bx</span><span class="p">],</span> <span class="no">ax</span>    <span class="c">; 把加载器写入内存: bx存放加载器所在的内存地址: 0x900</span>
+    <span class="no">add</span> <span class="no">bx</span><span class="p">,</span> <span class="mi">2</span>       <span class="c">; 移动2个字节</span>
+    <span class="no">loop</span> <span class="no">.go_on_read</span><span class="c">; 循环</span>
+    <span class="no">ret</span>             <span class="c">; 函数返回, call函数的时候会将返回地址压入栈中</span>
+</pre></div>
+
+
+<p>考虑这篇文章主要介绍的是计算机的启动流程, 所以关于如何读写硬盘我就不在这里做介绍了, 想了解的同学可以参考<a href="">用汇编读写硬盘</a>. <br/>
+最后调用<code>rd_disk_m_16</code>函数, 将Loader程序加载到指定地址.</p>
+<div class="codehilite"><pre><span></span>mov eax<span class="p">,</span> LOADER_START_SECTOR    <span class="p">;</span> loader在硬盘上的LBA地址<span class="o">:</span> <span class="mh">0x2</span><span class="p">,</span> 第<span class="m">3</span>块扇区
+mov bx<span class="p">,</span> LOADER_BASE_ADDR        <span class="p">;</span> loader在内存中的位置<span class="o">:</span> <span class="mh">0x900</span>
+mov cx<span class="p">,</span> <span class="m">4</span>                       <span class="p">;</span> 待读入的扇区数<span class="p">(</span><span class="m">2048</span>byte<span class="o">=</span><span class="m">2</span>KB<span class="o">=</span><span class="m">4</span><span class="o">*</span><span class="m">512</span>byte <span class="o">&lt;-</span> loader<span class="p">)</span>
+call rd_disk_m_16               <span class="p">;</span> <span class="kp">call</span>调用函数<span class="o">:</span> 从磁盘中读加载器到内存
+
+<span class="p">;</span> jmp LOADER_BASE_ADDR          <span class="p">;</span> 跳转访问加载器<span class="p">(</span>栈<span class="p">)</span>
+jmp LOADER_BASE_ADDR <span class="o">+</span> <span class="mh">0x300</span>    <span class="p">;</span> 使用绝对内存大小跳转
+<span class="p">;</span> LOADER_BASE_ADDR <span class="o">+</span> <span class="mh">0x300</span> 是loader_start的地址
+</pre></div>
+
+
+<h2>为什么不把MBR集成到BIOS中?</h2>
+<p>或许有同学会问: 既然实际加载OS内核是Loader干的事, 那么为什么不把MBR的功能放到BIOS程序中实现呢?<br/>
+如果MBR只需引导一个系统, 那么写入BIOS也是可以的. 但是现实情况是双系统甚至多个系统需要被引导, 而BIOS是固化在ROM上的, 想在BIOS中列举所有系统是不可能的. 所以便通过每个设备第一个扇区上的MBR来引导各个盘上的操作系统. <br/>
+这篇文章只考虑单操作系统加载.</p>
+<h2>中断</h2>
+<h2>全局描述符表</h2>
+<h2>保护模式</h2>
+<h2>分页机制</h2>
 <h2>Loader</h2>
-<h2>内核映像</h2>
+<p>MBR从硬盘特定位置读取loader程序. loader程序主要负责:</p>
+<ol>
+<li><strong><code>构建gdt及其内部描述符</code></strong></li>
+<li><strong><code>利用bios 0x15中断获取物理内存布局</code></strong></li>
+<li><strong><code>开启保护模式</code></strong></li>
+<li><strong><code>开启分页机制</code></strong></li>
+<li><strong><code>加载内核</code></strong></li>
+</ol>
+<h2>内核</h2>
         </div>
 <div id="bootpre">
     <script>
