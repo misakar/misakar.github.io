@@ -6431,10 +6431,10 @@ p.buttons {
     text-transform: uppercase;
     text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
     /*background: url("https://raw.githubusercontent.com/neo1218/neo1218.github.io/master/static/img/lvba.jpg") no-repeat center;*/
-    background: url("../img/misakar.jpg") no-repeat center;
-    background-size: 350px;
-    padding: 450px 0 10px;
-    margin: 0
+    background: url("../img/chuyin.png") no-repeat center;
+    background-size: 380px;
+    padding: 350px 0 10px;
+    margin: 100px 0 0 0;
 }
 
 #logo h2 {
@@ -6478,12 +6478,12 @@ p.buttons {
 
 #toolbox ul.tools li div.icon {
     float: left;
-    margin-right: 10px;
+    margin-right: 20px;
     margin-bottom: 5px;
     display: block;
-    background-color: #c0392b;
-    border-radius: 25px;
-    border: 5px solid #e67e22;
+    background: url("../img/icon.gif");
+    border-radius: 10px; 
+    border: 2px solid #e67e22;
     height: 45px;
     width: 45px;
     margin-top: -3px
@@ -6586,15 +6586,15 @@ p.buttons {
   pointer-events: none;
 }
 
-
-
+.animated {position: fixed;top: 0;left: 0;right: 0;transition: all .2s ease-in-out;}
+.animated.slideDown {top: -100px;}
+.animated.slideUp {top: 0;}
 
 // ===========================
 
 
 
 h1 {
-
   max-width: 400px;
   width: 100%;
   font-size: 24px;
