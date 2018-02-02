@@ -1,0 +1,441 @@
+<html>
+    <head>
+        <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+        <link href="https://cdn.bootcss.com/bootstrap/4.0.0-beta.2/css/bootstrap.min.css" rel="stylesheet" />
+        <link href=/static/css/main.css rel="stylesheet" type="text/css">
+        <link rel="stylesheet" href="/pygments.css">
+        <title>一起写个静态博客生成器</title>
+    </head>
+    <body class='main page'>
+        <div class="" style="text-align:center; position:relative;">
+            <img src=/static/img/misakar2.jpg width = "180px" height="180px"></img>
+            <a class="navbar-brand border border-info" href="http://www.misakar.me" style="margin-left:50px">Misaka.r.Me</a>
+        </div>
+        <hr>
+        <div class="container">
+            <h1>一起写一个静态博客生成器</h1>
+<hr/>
+
+<h2>前言</h2>
+<p>作为一名技术宅, 平时除了写代码就是写写博客. 搭建博客一般有三种途径: 1~用CSDN等公司提供的博客; 2~自己动手; 3~基于github等git服务商提供的静态站点搭博客. <br/>
+第一种博客主题有点丑（⊙ｏ⊙）…而且不能定制, 否决掉; 第二种我试过, 首先买个服务器+域名一个月就要不少钱, 而且数据要自己存储, 更麻烦的是每次部署都要手动将博客传到服务器上, 也放弃了; 第三种方法就方便多了, 首先域名github.io就解决了, 而且生成的静态化站点托管在github的服务器上, 也不需要自己买服务器, 部署博客也方便, git add/commit/push 3步搞定! <br/>
+现在最流行的静态博客生成器应该是hexo. 之前还是Mac的时候用的就是hexo, 后来Mac吃饭的时候进水了换到kali linux, hexo装了半晚上总是报错. 于是<a href="https://github.com/misakar/railgun/">自己写了一个静态博客生成器</a>. <br/></p>
+<h2>什么是静态博客生成器?</h2>
+<p>静态博客生成器是一个自动化工具, 提供简单的命令行接口执行<code>博客生成</code>; <code>博客静态化</code>; <code>博客部署</code>等任务, 并向用户提供配置接口以自定义博客. 静态博客生成器同github pages服务一起, 让博客的生成和部署变得极其方便. <br/></p>
+<h2>希望实现的效果</h2>
+<p>最终做出来的是一个命令行工具, 起名叫railgun(电磁炮), 她的API如下:</p>
+<ul>
+<li><code>$ railgun init</code>: 生成本地博客目录</li>
+<li><code>$ railgun new</code>: 生成新的博客模板</li>
+<li><code>$ railgun build</code>: 静态化本地博客站点</li>
+<li><code>$ railgun upload</code>: 将本地静态站点部署到用户配置的git pages服务上</li>
+<li><code>$ railgun server</code>: 本地预览</li>
+<li><code>$ railgun upgrade</code>: 更新博客主题</li>
+</ul>
+<p>本地博客提供配置文件供用户填写基本信息、部署地址等配置项.</p>
+<h2>思路</h2>
+<p>如果上来就从静态化模块开始码会不知从何下手. 其实静态博客生成器听起来很高大上, 但她最终生成的不过就是一个博客, 最终部署的也还是这个博客. 所以不如先把这个博客搭建运行起来, 然后再想办法静态化这个博客, 最终把这些步骤构建成自动化的命令行工具, 不就搞定了吗Ｏ（∩＿∩）Ｏ! <br/></p>
+<h2>实现本地博客</h2>
+<p>本地博客不会太复杂, 因为最终需要静态化, 所以数据库什么的是不需要的. 我这里选择用Flask搭建本地博客. <br/>
+选择Flask的原因有三: 一是发现了一个十分强大的Flask扩展<a href="https://pythonhosted.org/Flask-FlatPages/">Flask-FlatPages</a>, 使用这个扩展可以很方便的管理各种格式的博客文件(md, rst); 二是Flask强大的路由系统方便了静态生成器的实现; 三是Flask内置的前端模板Jinja2语法简单、优雅, 方便用户(特别是非前端程序员)自定义主题. <br/>
+当然, Flask也有缺点, 考虑静态生成器静态化速度的时候会说（⊙﹏⊙）ｂ <br/>
+本地博客的目录结构如下:</p>
+<div class="codehilite"><pre><span></span>├── app
+    │   ├── __init__.py
+    │   ├── pages
+    │   │   └── hello.md
+    │   ├── paginate.py
+    |   ├── templates
+    |   │   ├── about.html
+    |   │   ├── archive.html
+    |   │   ├── archives.html
+    |   │   ├── base.html
+    |   │   ├── index.html
+</pre></div>
+
+
+<p>pages目录存放用户编写的博客文件, 博客格式可以在config.py中进行配置. config.py有如下配置项:</p>
+<div class="codehilite"><pre><span></span><span class="k">class</span> <span class="nc">Config</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="n">DEBUG</span> <span class="o">=</span> <span class="bp">True</span>
+    <span class="n">FLATPAGES_AUTO_RELOAD</span> <span class="o">=</span> <span class="n">DEBUG</span>
+    <span class="n">FLATPAGES_EXTENSION</span> <span class="o">=</span> <span class="s1">&#39;.md&#39;</span>
+
+<span class="k">class</span> <span class="nc">MyConfig</span><span class="p">(</span><span class="n">Config</span><span class="p">):</span>
+    <span class="c1"># [site setting]</span>
+    <span class="n">SITE_NAME</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+    <span class="n">SITE_URL</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+    <span class="n">SITE_DESC</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+    <span class="n">SITE_OWNER</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+    <span class="n">SITE_KEYWORDS</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+
+    <span class="c1"># [article setting]</span>
+    <span class="n">ARTICLE_TYPE</span> <span class="o">=</span> <span class="n">FLATPAGES_EXTENSION</span> <span class="o">=</span> <span class="s2">&quot;.md&quot;</span>
+    <span class="n">ARTICLE_PER_PAGE</span> <span class="o">=</span> <span class="mi">10</span>
+
+    <span class="c1"># [owner info]</span>
+    <span class="n">GITHUB_URL</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+    <span class="n">WEIBO_URL</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+    <span class="n">TWITTER_URL</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+    <span class="n">QQ</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+    <span class="n">EMAIL</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+
+    <span class="c1"># [deploy on github/(git) pages]</span>
+    <span class="n">GIT_URL</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+    <span class="n">BRANCH</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+    <span class="n">GEN_BASE_URL</span> <span class="o">=</span> <span class="n">SITE_URL</span>
+</pre></div>
+
+
+<p>配置项以字典的形式汇总, 传入所有页面:</p>
+<div class="codehilite"><pre><span></span><span class="sd">&quot;&quot;&quot; User Config &quot;&quot;&quot;</span>
+<span class="n">article_per_page</span> <span class="o">=</span> <span class="n">app</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;ARTICLE_PER_PAGE&#39;</span><span class="p">)</span>
+<span class="n">user_config_dict</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;ARTICLE_PER_PAGE&#39;</span><span class="p">:</span> <span class="n">article_per_page</span><span class="p">,</span>
+        <span class="s1">&#39;SITE_NAME&#39;</span><span class="p">:</span> <span class="n">app</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;SITE_NAME&#39;</span><span class="p">),</span>
+        <span class="s1">&#39;SITE_URL&#39;</span><span class="p">:</span> <span class="n">app</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;SITE_URL&#39;</span><span class="p">),</span>
+        <span class="s1">&#39;SITE_DESC&#39;</span><span class="p">:</span> <span class="n">app</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;SITE_DESC&#39;</span><span class="p">),</span>
+        <span class="s1">&#39;SITE_OWNER&#39;</span><span class="p">:</span> <span class="n">app</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;SITE_OWNER&#39;</span><span class="p">),</span>
+        <span class="s1">&#39;GIT_URL&#39;</span><span class="p">:</span> <span class="n">app</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;GIT_URL&#39;</span><span class="p">),</span>
+        <span class="s1">&#39;GITHUB_URL&#39;</span><span class="p">:</span> <span class="n">app</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;GITHUB_URL&#39;</span><span class="p">),</span>
+        <span class="s1">&#39;WEIBO_URL&#39;</span><span class="p">:</span> <span class="n">app</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;WEIBO_URL&#39;</span><span class="p">),</span>
+        <span class="s1">&#39;TWITTER_URL&#39;</span><span class="p">:</span> <span class="n">app</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;TWITTER_URL&#39;</span><span class="p">),</span> 
+<span class="p">}</span>
+
+<span class="nd">@app.route</span><span class="p">(</span><span class="s1">&#39;/&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">index</span><span class="p">():</span>
+    <span class="c1"># ......</span>
+    <span class="k">return</span> <span class="n">render_template</span><span class="p">(</span><span class="s1">&#39;index.html&#39;</span><span class="p">,</span> <span class="o">**</span><span class="nb">dict</span><span class="p">(</span><span class="n">user_config_dict</span><span class="p">,</span> <span class="o">**</span><span class="n">api_dict</span><span class="p">))</span>
+</pre></div>
+
+
+<p>这样用户就可以在自定义主题的过程中任意使用这些配置. <br/></p>
+<p>接下来说说本地博客的核心插件: <code>Flask-FlatPages</code>. 因为是静态化博客, 所以没有数据库, 那么如何方便的对博客文件集合进行查找和访问呢?</p>
+<div class="codehilite"><pre><span></span>Flask-FlatPages provides a collections of pages to your Flask application.
+Pages are built  from “flat” text files as opposed to a relational database.
+</pre></div>
+
+
+<p>Flask-FlatPages完美的符合了我们的需求! 使用起来很简单:</p>
+<div class="codehilite"><pre><span></span><span class="c1"># 导入并初始化Flask扩展</span>
+<span class="kn">from</span> <span class="nn">flask_flatpages</span> <span class="kn">import</span> <span class="n">FlatPages</span>
+
+<span class="n">app</span> <span class="o">=</span> <span class="n">Flask</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+<span class="n">app</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">from_object</span><span class="p">(</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;default&#39;</span><span class="p">])</span>
+<span class="n">pages</span> <span class="o">=</span> <span class="n">FlatPages</span><span class="p">(</span><span class="n">app</span><span class="p">)</span>
+
+<span class="c1"># 配置Flask-Flatpages</span>
+<span class="n">FLATPAGES_AUTO_RELOAD</span> <span class="o">=</span> <span class="n">DEBUG</span>
+<span class="n">FLATPAGES_EXTENSION</span> <span class="o">=</span> <span class="s1">&#39;.md&#39;</span>
+
+<span class="c1"># 使用Flask-Flatpages扩展</span>
+<span class="c1"># -- pages是所有博客文件的集合</span>
+<span class="c1"># -- p.meta获取p博客的元数据(标题、日期等)</span>
+<span class="n">posts</span> <span class="o">=</span> <span class="p">[</span><span class="n">p</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">pages</span> <span class="k">if</span> <span class="s1">&#39;date&#39;</span> <span class="ow">in</span> <span class="n">p</span><span class="o">.</span><span class="n">meta</span><span class="p">]</span>
+
+<span class="c1"># 使用get_or_404可以通过``相对路径``找到该博客</span>
+<span class="nd">@app.route</span><span class="p">(</span><span class="s1">&#39;/&lt;path:path&gt;/&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">post</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+    <span class="n">post</span> <span class="o">=</span> <span class="n">pages</span><span class="o">.</span><span class="n">get_or_404</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+    <span class="n">api_dict</span><span class="p">[</span><span class="s1">&#39;post&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">post</span>
+    <span class="k">return</span> <span class="n">render_template</span><span class="p">(</span><span class="s1">&#39;post.html&#39;</span><span class="p">,</span> <span class="o">**</span><span class="nb">dict</span><span class="p">(</span><span class="n">user_config_dict</span><span class="p">,</span> <span class="o">**</span><span class="n">api_dict</span><span class="p">))</span>
+</pre></div>
+
+
+<p>上面这个视图函数实现了通过相对路径查找某篇博客并传入前端模板进行渲染的功能,</p>
+<div class="codehilite"><pre><span></span><span class="p">&lt;</span><span class="nt">html</span><span class="p">&gt;</span>
+    <span class="p">&lt;</span><span class="nt">head</span><span class="p">&gt;</span>
+        <span class="p">&lt;</span><span class="nt">meta</span> <span class="na">http-equiv</span><span class="o">=</span><span class="s">&quot;content-type&quot;</span> <span class="na">content</span><span class="o">=</span><span class="s">&quot;text/html; charset=utf-8&quot;</span> <span class="p">/&gt;</span>
+        <span class="p">&lt;</span><span class="nt">link</span> <span class="na">href</span><span class="o">=</span><span class="s">{{</span> <span class="na">url_for</span><span class="err">(&#39;</span><span class="na">static</span><span class="err">&#39;,</span> <span class="na">filename</span><span class="o">=</span><span class="s">&#39;css/main.css&#39;</span><span class="err">)</span> <span class="err">}}</span> <span class="na">rel</span><span class="o">=</span><span class="s">&quot;stylesheet&quot;</span> <span class="na">type</span><span class="o">=</span><span class="s">&quot;text/css&quot;</span><span class="p">&gt;</span>
+        <span class="p">&lt;</span><span class="nt">title</span><span class="p">&gt;</span>{{ post.title }}<span class="p">&lt;/</span><span class="nt">title</span><span class="p">&gt;</span>
+    <span class="p">&lt;/</span><span class="nt">head</span><span class="p">&gt;</span>
+    <span class="p">&lt;</span><span class="nt">body</span><span class="p">&gt;</span>
+        {{ post.html | safe }}
+    <span class="p">&lt;/</span><span class="nt">body</span><span class="p">&gt;</span>
+<span class="p">&lt;/</span><span class="nt">html</span><span class="p">&gt;</span>
+</pre></div>
+
+
+<p><code>post.html | safe</code> 自动过滤掉不安全字符并将html渲染为markdown.</p>
+<p>OK! 现在我们的本地博客实现了配置接口、博客文件管理和访问,</p>
+<p><code>$ python manage.py runserver</code></p>
+<p>便可运行这个博客. <br/></p>
+<p>接下来我们要开始思考如何静态化这个博客啦! <br/></p>
+<h2>实现静态生成器</h2>
+<h3>什么是静态化?!</h3>
+<p>我们搭建的本地博客是不能直接部署在github pages服务上的, 因为我们的博客是Python程序需要启动Web服务器运行. 而github pages不是一个应用环境, 他只是一个git仓库, 里面只能放静态文件. <code>所以静态化的思路就是在本地运行博客并请求所有路由, 将请求得到的html响应(包含格式)写入html文件, 并将html文件部署在github上</code>. 这样请求博客路由, github服务器就会返回写有html的静态文件, 这就是其被称为静态化的原因.<br/>
+静态化也有局限的地方, 那就是无法实现用户登录等动态交互功能. 不过博客本来就是用来看的, 这些局限不是太大的问题. <br/></p>
+<h3>实现</h3>
+<p>通过上段的介绍, 我们知道了实现静态生成器的2个关键环节:</p>
+<ol>
+<li><code>获取所有路由</code></li>
+<li><code>模拟请求所有路由, 将响应写入文件</code></li>
+</ol>
+<p>先看看如何获取所有路由吧. <br/>
+本地博客的所有URL(路由)分为三大类: 第一类是不含参数的确定路由, 有如下这些</p>
+<div class="codehilite"><pre><span></span><span class="nd">@app.route</span><span class="p">(</span><span class="s1">&#39;/&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">index</span><span class="p">():</span>
+    <span class="c1"># 博客主页</span>
+    <span class="k">pass</span>
+
+<span class="nd">@app.route</span><span class="p">(</span><span class="s1">&#39;/archives/&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">archives</span><span class="p">():</span>
+    <span class="c1"># 所有归档</span>
+    <span class="k">pass</span>
+
+<span class="nd">@app.route</span><span class="p">(</span><span class="s1">&#39;/tags/&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">tags</span><span class="p">():</span>
+    <span class="c1"># 所有标签</span>
+    <span class="k">pass</span>
+
+<span class="nd">@app.route</span><span class="p">(</span><span class="s1">&#39;/about/&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">about</span><span class="p">():</span>
+    <span class="c1"># 关于页面</span>
+    <span class="k">pass</span>
+</pre></div>
+
+
+<p>这类路由是固定的, 与博客的数量无关. <br/></p>
+<p>第二类是需要通过<code>url_for</code>生成完整url的含参数动态路由, 有如下这些</p>
+<div class="codehilite"><pre><span></span><span class="nd">@app.route</span><span class="p">(</span><span class="s1">&#39;/&lt;path:path&gt;/&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">post</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+    <span class="c1"># 路径为path的博客文章</span>
+    <span class="k">pass</span>
+
+<span class="nd">@app.route</span><span class="p">(</span><span class="s1">&#39;/archive/&lt;string:year&gt;/&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">archive</span><span class="p">(</span><span class="n">year</span><span class="p">):</span>
+    <span class="c1"># 年份为year归档的所有博客</span>
+    <span class="k">pass</span>
+
+<span class="nd">@app.route</span><span class="p">(</span><span class="s1">&#39;/tag/&lt;string:tag&gt;/&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">tag</span><span class="p">(</span><span class="n">tag</span><span class="p">):</span>
+    <span class="c1"># 包含标签tag的所有博客</span>
+    <span class="k">pass</span>
+</pre></div>
+
+
+<p>这些路由通过url_for传参生成, 比如通过相对路径访问博客页面的路由:</p>
+<div class="codehilite"><pre><span></span><span class="p">&lt;</span><span class="nt">div</span> <span class="na">id</span><span class="o">=</span><span class="s">&quot;toolbox&quot;</span><span class="p">&gt;</span>
+    <span class="p">&lt;</span><span class="nt">ul</span> <span class="na">class</span><span class="o">=</span><span class="s">&quot;tools&quot;</span><span class="p">&gt;</span>
+        {% for post in latests %}
+            <span class="p">&lt;</span><span class="nt">li</span><span class="p">&gt;</span>
+                <span class="p">&lt;</span><span class="nt">a</span> <span class="na">target</span><span class="o">=</span><span class="s">&quot;blank&quot;</span> <span class="na">href</span><span class="o">=</span><span class="s">{{</span> <span class="na">url_for</span><span class="err">(&#39;.</span><span class="na">post</span><span class="err">&#39;,</span> <span class="na">path</span><span class="o">=</span><span class="s">post.path)</span> <span class="err">}}</span><span class="p">&gt;&lt;/</span><span class="nt">a</span><span class="p">&gt;</span>
+            <span class="p">&lt;/</span><span class="nt">li</span><span class="p">&gt;</span>
+        {% endfor %}
+    <span class="p">&lt;/</span><span class="nt">ul</span><span class="p">&gt;</span>
+<span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+</pre></div>
+
+
+<p><code>.post</code>表示生成post视图函数对应的路由, <code>path=post.path</code>就是将<code>post.path</code>的值传给path参数构建完整url. <br/></p>
+<p>第三类路由是Flask默认处理静态资源的路由, 不需要用户定义, 可以通过<code>url_for</code>生成:</p>
+<div class="codehilite"><pre><span></span><span class="p">&lt;</span><span class="nt">link</span> <span class="na">href</span><span class="o">=</span><span class="s">{{</span> <span class="na">url_for</span><span class="err">(&#39;</span><span class="na">static</span><span class="err">&#39;,</span> <span class="na">filename</span><span class="o">=</span><span class="s">&#39;css/application.css&#39;</span> <span class="err">)</span> <span class="err">}}</span> <span class="na">media</span><span class="o">=</span><span class="s">&quot;screen&quot;</span> <span class="na">rel</span><span class="o">=</span><span class="s">&quot;stylesheet&quot;</span> <span class="na">type</span><span class="o">=</span><span class="s">&quot;text/css&quot;</span> <span class="p">/&gt;</span>
+ <span class="p">&lt;</span><span class="nt">script</span> <span class="na">src</span><span class="o">=</span><span class="s">{{</span> <span class="na">url_for</span><span class="err">(&#39;</span><span class="na">static</span><span class="err">&#39;,</span> <span class="na">filename</span><span class="o">=</span><span class="s">&#39;js/application.js&#39;</span><span class="err">)</span> <span class="err">}}</span> <span class="na">type</span><span class="o">=</span><span class="s">&quot;text/javascript&quot;</span><span class="p">&gt;&lt;/</span><span class="nt">script</span><span class="p">&gt;</span>
+</pre></div>
+
+
+<p>加载相应路径下的静态资源(<code>static/css/application.css</code>, <code>static/js/application.js</code>). <br/></p>
+<p>第二和第三类路由的数量是不确定的, 第一类路由虽然固定, 但是写死似乎不太好看(⊙﹏⊙)b, 那么如何获取所有路由呢? 蛤! Flask的膜法就起作用啦! <br/></p>
+<p>所有路由可以通过iter_rules()方法获取:</p>
+<div class="codehilite"><pre><span></span>&gt;&gt;&gt; list(app.url_map.iter_rules())
+[&lt;Rule &#39;/archives/&#39; (HEAD, OPTIONS, GET) -&gt; archives&gt;,
+ &lt;Rule &#39;/about/&#39; (HEAD, OPTIONS, GET) -&gt;about&gt;,
+ &lt;Rule &#39;/tags/&#39; (HEAD, OPTIONS, GET) -&gt; tags&gt;,
+ &lt;Rule &#39;/&#39; (HEAD, OPTIONS, GET) -&gt; index&gt;,
+ &lt;Rule &#39;/archive/&lt;year&gt;/&#39; (HEAD, OPTIONS, GET) -&gt; archive&gt;,
+ &lt;Rule &#39;/static/&lt;filename&gt;&#39; (HEAD, OPTIONS, GET) -&gt; static&gt;,
+ &lt;Rule &#39;/tag/&lt;tag&gt;/&#39; (HEAD, OPTIONS, GET) -&gt; tag&gt;,
+ &lt;Rule &#39;/&lt;path&gt;/&#39; (HEAD, OPTIONS, GET) -&gt; post&gt;]
+</pre></div>
+
+
+<p>这样第一类路由就可以轻松拿到了. <br/>
+那么动态路由怎么处理呢? 对于动态路由肯定不能指望一个方法返回所有路由,
+因为动态路由只有在请求传入参数的时候才能确定, 所以如果能设置一个<code>url_for钩子</code>,
+在每次调用<code>url_for</code>时将<code>url_for</code>生成的路由存储起来就好了.
+Flask就提供了这样一个接口: <a href="http://flask.pocoo.org/docs/0.11/patterns/urlprocessors/"><code>url processors</code></a></p>
+<div class="codehilite"><pre><span></span>url processors can automatically inject values into a call for url_for() automatically.
+</pre></div>
+
+
+<p>我们可以实现这样一个钩子, 在第一次调用<code>url_for</code>时将动态生成的url存储到双端队列<code>self.calls</code>中:</p>
+<div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">gens</span><span class="p">(</span><span class="n">endpoint</span><span class="p">,</span> <span class="n">values</span><span class="p">):</span>
+    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_enabled</span> \
+       <span class="ow">and</span> <span class="p">((</span><span class="n">endpoint</span><span class="p">,</span> <span class="n">values</span><span class="p">)</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">calls</span><span class="p">):</span>
+       <span class="bp">self</span><span class="o">.</span><span class="n">calls</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">endpoint</span><span class="p">,</span> <span class="n">values</span><span class="o">.</span><span class="n">copy</span><span class="p">()))</span>
+ <span class="c1"># {None: [&lt;function gens at xxxx&gt;]}</span>
+ <span class="bp">self</span><span class="o">.</span><span class="n">app</span><span class="o">.</span><span class="n">url_default_functions</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="bp">None</span><span class="p">,</span> <span class="p">[])</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">gens</span><span class="p">)</span>
+</pre></div>
+
+
+<p>这样我们就可以拿到所有的动态路由啦! 至于call为什么用<code>collections.deque</code>实现, 因为这个类型是线程安全的.<br/></p>
+<p>接下来就是发模拟请求并将响应写入文件, 可以用Flask的<code>app.test_client()</code>发送请求. 顾名思义, 这个API本身是用于测试的, 这里正好可以用.</p>
+<div class="codehilite"><pre><span></span><span class="k">def</span> <span class="nf">wsgi_resquest</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">url</span><span class="p">):</span>
+    <span class="n">gen_client</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">app</span><span class="o">.</span><span class="n">test_client</span><span class="p">()</span>
+    <span class="n">base_url</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">app</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;GEN_BASE_URL&#39;</span><span class="p">]</span>
+    <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">url_fors</span><span class="p">:</span>
+        <span class="n">response</span> <span class="o">=</span> <span class="k">yield</span> <span class="n">gen_client</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">follow_redirects</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+                                  <span class="n">base_url</span><span class="o">=</span><span class="n">base_url</span><span class="p">)</span>
+</pre></div>
+
+
+<p>说说这里为什么用了yield. 静态博客生成器速度是关键, 一些爱写博客的人可能有几百篇博客, 对每个博客进行请求并等待响应, 这个过程中的网络IO是非常耗时的. 为了提升速度, 我一开始想到的是用协程进行处理, 然而可惜, Flask是线程模型, <code>gen_client.get</code>不是coroutine...
+所以这里的yield其实并没有什么卵用... 至于多线程, GIL...  一个生成器开多进程又有点小题大做了. 测了一下生成速度, 200篇文章5s(包含外部图片请求), 可以接受, 那就这样吧.(ps: 等我写到200篇会优化的O(∩_∩)O) <br/>
+将响应写入文件很简单, 直接上代码:</p>
+<div class="codehilite"><pre><span></span><span class="n">destination_path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">urlpath_to_filepath</span><span class="p">(</span><span class="n">url</span><span class="p">)</span>
+<span class="n">filename</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">root_path</span><span class="p">,</span> <span class="o">*</span><span class="n">destination_path</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;/&#39;</span><span class="p">))</span>
+<span class="n">dirname</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+<span class="n">static_data</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+<span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">dirname</span><span class="p">):</span>
+    <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">dirname</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">resp</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">wsgi_resquest</span><span class="p">(</span><span class="n">url</span><span class="p">):</span>
+        <span class="n">static_data</span> <span class="o">+=</span> <span class="n">resp</span><span class="o">.</span><span class="n">data</span>
+        <span class="c1"># write response to static files</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s1">&#39;wb&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">fd</span><span class="p">:</span>
+            <span class="n">fd</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">static_data</span><span class="p">)</span>
+</pre></div>
+
+
+<p>综上, 生成器程序的核心结构是两个类: <code>Gen类</code>和<code>UrlForGen类</code>, Gen类用于处理第一类路由, 包含一个入口方法(gen). <code>UrlForGen</code>是一个上下文管理器类, with该类对象, 插入钩子获取动态路由, 传递给gen处理. 最后gen方法模拟请求所有路由, 并将响应写入文件存入相应目录. 完成静态化!</p>
+<h2>实现命令行接口</h2>
+<p>OK! 现在我们已经完成了本地博客和静态化模块. 接下来就要码最终呈现给用户的命令行接口啦. <br/>
+我选择了<a href="https://github.com/pallets/click">click框架</a>来实现命令行接口. click使用起来很简单</p>
+<div class="codehilite"><pre><span></span><span class="c1"># 创建一个名为cli的命令集合(group)</span>
+<span class="nd">@click.group</span><span class="p">()</span>
+<span class="k">def</span> <span class="nf">cli</span><span class="p">():</span>
+    <span class="k">pass</span>
+
+<span class="c1"># 创建命令init</span>
+<span class="c1"># 接收参数site_name</span>
+<span class="nd">@click.command</span><span class="p">()</span>
+<span class="nd">@click.argument</span><span class="p">(</span><span class="s1">&#39;site_name&#39;</span><span class="p">)</span>
+<span class="k">def</span> <span class="nf">init</span><span class="p">(</span><span class="n">dev</span><span class="p">,</span> <span class="n">site_name</span><span class="p">):</span>
+    <span class="k">pass</span>
+
+<span class="c1"># 将命令init添加到cli命令集合中</span>
+<span class="n">cli</span><span class="o">.</span><span class="n">add_command</span><span class="p">(</span><span class="n">init</span><span class="p">)</span>
+
+<span class="c1"># 在setup.py中</span>
+<span class="c1"># 将cli定义为railgun命令</span>
+<span class="n">entry_points</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">&#39;console_scripts&#39;</span><span class="p">:[</span>
+        <span class="s1">&#39;railgun=cli.railgun:cli&#39;</span> <span class="c1"># 表示cli/railgun.py里的cli group</span>
+    <span class="p">]</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<p>接下来我们一个命令一个命令的看. <br/></p>
+<h3>railgun init</h3>
+<p><code>railgun init</code>的作用是创建用户本地博客. 也就是想办法把我们搭建的本地博客模块拷贝到用户指定的路径处. 我们知道一开始用户安装railgun的时候会安装相应的代码到命令目录下, 如果我们把本地博客打包连同命令一起上传, 用户安装后就会在自己的电脑上拥有一个本地博客副本了! 而且我们不用管用户把railgun命令安装在<code>/bin/</code>、<code>/usr/bin/</code>还是<code>/usr/local/bin/</code>, 我们只需要使用相对路径定位本地博客目录, 就可以找到它了!</p>
+<div class="codehilite"><pre><span></span><span class="c1"># 根据用户调用railgun命令时的路径确定本地博客site所在的路径</span>
+<span class="n">site_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="vm">__file__</span><span class="p">),</span> <span class="s1">&#39;..&#39;</span><span class="p">))</span> 
+<span class="n">site</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">site_path</span><span class="p">,</span> <span class="s1">&#39;site&#39;</span><span class="p">)</span>
+<span class="c1"># 路径确定了, 拷贝就好了...  </span>
+<span class="k">for</span> <span class="n">site_dir</span><span class="p">,</span> <span class="n">sub_dirs</span><span class="p">,</span> <span class="n">filenames</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">walk</span><span class="p">(</span><span class="n">site</span><span class="p">):</span>
+    <span class="n">relative</span> <span class="o">=</span> <span class="n">site_dir</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">site</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">lstrip</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">sep</span><span class="p">)</span>
+    <span class="n">dst_dir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">dst</span><span class="p">,</span> <span class="n">relative</span><span class="p">)</span>
+
+    <span class="n">_mkdir_p</span><span class="p">(</span><span class="n">dst_dir</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">filename</span> <span class="ow">in</span> <span class="n">filenames</span><span class="p">:</span>
+        <span class="n">site_file</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">site_dir</span><span class="p">,</span> <span class="n">filename</span><span class="p">)</span>
+        <span class="n">dst_file</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">dst_dir</span><span class="p">,</span> <span class="n">filename</span><span class="p">)</span>
+
+        <span class="n">shutil</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="n">site_file</span><span class="p">,</span> <span class="n">dst_file</span><span class="p">)</span>
+</pre></div>
+
+
+<h3>railgun new</h3>
+<p><code>railgun new</code>用于新建一篇博客, </p>
+<div class="codehilite"><pre><span></span><span class="nd">@click.command</span><span class="p">()</span>
+<span class="nd">@click.argument</span><span class="p">(</span><span class="s1">&#39;file_name&#39;</span><span class="p">)</span>
+<span class="nd">@run_in_root</span>
+<span class="k">def</span> <span class="nf">new</span><span class="p">(</span><span class="n">file_name</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    ⚡️ create a new post</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">current_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getcwd</span><span class="p">()</span>
+    <span class="n">file_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">current_path</span><span class="p">,</span> <span class="s1">&#39;app/pages&#39;</span><span class="p">,</span> <span class="n">file_name</span><span class="o">+</span><span class="s1">&#39;.md&#39;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">file_path</span><span class="p">):</span>
+        <span class="n">warning_path_exist</span><span class="p">(</span><span class="n">file_path</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">new_time</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span><span class="o">.</span><span class="n">strftime</span><span class="p">(</span><span class="s2">&quot;%Y-%m-</span><span class="si">%d</span><span class="s2"> %H:%M:%S&quot;</span><span class="p">)</span>
+        <span class="n">_touch_file</span><span class="p">(</span><span class="n">file_path</span><span class="p">,</span> <span class="n">md</span> <span class="o">%</span> <span class="n">new_time</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">log_symbol</span><span class="p">[</span><span class="s1">&#39;info&#39;</span><span class="p">]</span> <span class="o">+</span> \
+            <span class="s2">&quot; new a markdown file </span><span class="se">\033</span><span class="s2">[32m{path}</span><span class="se">\033</span><span class="s2">[0m&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="n">file_path</span><span class="p">)</span>
+        <span class="p">)</span>
+</pre></div>
+
+
+<p>用户执行<code>railgun命令</code>时的目录是本地博客的根目录, 顺着相对路径就可以找到存放博客的pages目录了, 然后新建一篇博客.</p>
+<h3>railgun server</h3>
+<p><code>railgun server</code>会启动预览服务器, 这里直接用<code>os.popen()</code>调用<code>python
+manage.py runserver</code>就可以了,</p>
+<div class="codehilite"><pre><span></span><span class="n">os</span><span class="o">.</span><span class="n">popen</span><span class="p">(</span><span class="s2">&quot;python2 manage.py runserver --port </span><span class="si">%d</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">port</span><span class="p">)</span>
+</pre></div>
+
+
+<h3>railgun build</h3>
+<p><code>railgun build</code>用于静态化博客. 考虑到我们的静态化模块需要依赖Flask API(iter_rules, url processors)以及用户配置(GEN_BASE_URL)工作, 所以我把静态化模块的启动放到了本地博客的manage.py中:</p>
+<div class="codehilite"><pre><span></span><span class="c1"># 本地博客的manage.py</span>
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="ow">and</span> <span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;build&#39;</span><span class="p">:</span>
+        <span class="n">_gen</span> <span class="o">=</span> <span class="n">Gen</span><span class="p">(</span><span class="n">app</span><span class="p">)</span>
+        <span class="n">_gen</span><span class="o">.</span><span class="n">gen</span><span class="p">()</span>
+        <span class="c1"># update static resources</span>
+        <span class="n">update_static_res</span><span class="p">()</span>
+</pre></div>
+
+
+<p>然后<code>railgun build</code>调用<code>os.popen('python manage.py build')</code>执行静态化工作.</p>
+<h3>railgun upload</h3>
+<p><code>railgun upload</code>根据用户配置将静态博客部署到指定git仓库上.</p>
+<h3>railgun upgrade</h3>
+<h2>主题系统</h2>
+<h2>接下来</h2>
+        </div>
+<div id="bootpre">
+    <script>
+        var x = document.getElementsByClassName("codehilite");
+        for (var i = 0; i < x.length; i++)
+        {
+            x[i].childNodes[0].className = "border border-danger";
+        }
+    </script>
+</div>
+<div id="h1center">
+    <script>
+        var x = document.getElementsByTagName("h1")[0].style="text-align:center";
+    </script>
+</div>
+<div id="_blank">
+    <script>
+        var as = document.getElementsByTagName('a');
+        // alert(as[1]);
+        for (var i = 1; i < as.length; i++) {
+            // as[i].style="target: _blank";
+            as[i].setAttribute('target', '_blank');
+        }
+    </script>
+</div>
+<div id="disqus_thread"></div>
+<script>
+/**
+*  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+*  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables*/
+/*
+var disqus_config = function () {
+this.page.url = PAGE_URL;  // Replace PAGE_URL with your page's canonical URL variable
+this.page.identifier = PAGE_IDENTIFIER; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+};
+*/
+(function() { // DON'T EDIT BELOW THIS LINE
+var d = document, s = d.createElement('script');
+s.src = 'https://neo1218flask.disqus.com/embed.js';
+s.setAttribute('data-timestamp', +new Date());
+(d.head || d.body).appendChild(s);
+})();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    </body>
+</html>
