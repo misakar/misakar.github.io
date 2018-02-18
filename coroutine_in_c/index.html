@@ -139,7 +139,7 @@ consume <span class="m">2</span>
 
 <p>WOW, 目标达成!! <br/></p>
 <h2>GoTo</h2>
-<p>goto语句也是非本地跳转, 不过我不清楚goto会不会保存label所在的栈环境, 实验一下:</p>
+<p>goto语句可以实现本地跳转, 不过我不清楚goto会不会保存label所在的栈环境, 实验一下:</p>
 <div class="codehilite"><pre><span></span><span class="cp">#include</span> <span class="cpf">&lt;stdio.h&gt;</span><span class="cp"></span>
 <span class="cp">#include</span> <span class="cpf">&lt;stdlib.h&gt;</span><span class="cp"></span>
 <span class="cp">#include</span> <span class="cpf">&lt;setjmp.h&gt;</span><span class="cp"></span>
@@ -190,7 +190,7 @@ consume <span class="m">2</span>
 </pre></div>
 
 
-<p>看来goto也是可以的, 猜测一下, 或许C的goto就用了setjmp和longjmp呢! 不过还没找到goto的源码, 不能确认...</p>
+<p>ojbk! <br/></p>
 <h2>Duff's Device</h2>
 <p>duff's device是<a href="https://www.chiark.greenend.org.uk/~sgtatham/coroutines.html">Coroutines in C</a>这篇文章介绍的一个特别有意思的跳转结构, 用的是switch. duff's device最初的目标是做循环展开的, 从而减少循环的次数, 优化代码:</p>
 <div class="codehilite"><pre><span></span><span class="k">switch</span> <span class="p">(</span><span class="n">count</span> <span class="o">%</span> <span class="mi">8</span><span class="p">)</span> <span class="p">{</span>
