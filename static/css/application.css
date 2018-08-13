@@ -6431,10 +6431,10 @@ p.buttons {
     text-transform: uppercase;
     text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
     /*background: url("https://raw.githubusercontent.com/neo1218/neo1218.github.io/master/static/img/lvba.jpg") no-repeat center;*/
-    background: url("../img/chuyin.png") no-repeat center;
-    background-size: 380px;
-    padding: 350px 0 10px;
-    margin: 100px 0 0 0;
+    background: url("../img/rikka.gif") no-repeat center;
+    background-size: 240px;
+    padding: 400px 0 20px;
+    margin: 50px 0 0 0;
 }
 
 #logo h2 {
